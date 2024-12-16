@@ -1,0 +1,39 @@
+[package]
+name = "revmc-worker"
+description = "EVM AOT Compile Worker for using machine code in hot contracts within a node runtime"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+exclude.workspace = true
+
+[package.metadata.docs.rs]
+no-default-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+
+revmc.workspace = true
+revm.workspace = true
+revm-primitives.workspace = true
+
+revmc-backend.workspace = true
+revmc-llvm.workspace = true
+
+tokio = { version = "1.41.1", features = ["full"] }
+thiserror = "1.0.34"
+tracing = { workspace = true, optional = true }
+libloading = "0.8"
+lru = "0.12.5"
+rocksdb = { version = "0.23.0", features = ["multi-threaded-cf"] }
+
+[build-dependencies]
+revmc-build.workspace = true
