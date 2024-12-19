@@ -1,4 +1,6 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{ Arc, RwLock };
+use tokio::task::JoinHandle;
+use tokio::sync::Semaphore;
 
 use alloy_primitives::B256;
 use revmc::primitives::SpecId;
@@ -19,6 +21,7 @@ pub struct CompileWorker {
     pub threshold: u64,
     sled_db: Arc<RwLock<SledDB<B256>>>,
     aot_runtime: Arc<AotRuntime>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl CompileWorker {
@@ -28,17 +31,34 @@ impl CompileWorker {
     ///
     /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is compiled.
     /// * `sled_db` - A reference-counted, thread-safe handle to the sled database.
-    pub(crate) fn new(threshold: u64, sled_db: Arc<RwLock<SledDB<B256>>>) -> Self {
-        Self { threshold, sled_db, aot_runtime: Arc::new(AotRuntime::new(AotCfg::default())) }
+    /// * `max_concurrent_tasks` - The maximum number of concurrent tasks allowed.
+    pub(crate) fn new(
+        threshold: u64,
+        sled_db: Arc<RwLock<SledDB<B256>>>,
+        max_concurrent_tasks: usize
+    ) -> Self {
+        Self {
+            threshold,
+            sled_db,
+            aot_runtime: Arc::new(AotRuntime::new(AotCfg::default())),
+            semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
+        }
     }
 
-    // Work the given bytecode with the specific specId.
+    /// Processes the given bytecode with the specified specId.
+    ///
+    /// # Arguments
+    ///
+    /// * `spec_id` - The specification ID for the EVM.
+    /// * `code_hash` - The hash of the bytecode to be compiled.
+    /// * `bytecode` - The bytecode to be compiled.
     pub(crate) fn work(
         &mut self,
         spec_id: SpecId,
         code_hash: B256,
-        bytecode: revm::primitives::Bytes,
-    ) {
+        bytecode: revm::primitives::Bytes
+    ) -> JoinHandle<()> {
+        // Read the current count of the bytecode hash from the embedded database
         let count = {
             let db_read = match self.sled_db.read() {
                 Ok(lock) => lock,
@@ -47,20 +67,21 @@ impl CompileWorker {
             let count_bytes = db_read.get(code_hash).unwrap_or(None);
             count_bytes.and_then(|v| ivec_to_u64(&v)).unwrap_or(0)
         };
-        // 1. read codeahash count from embedded db
         let new_count = count + 1;
 
         let sled_db = Arc::clone(&self.sled_db);
         let aot_runtime = self.aot_runtime.clone();
         let threshold = self.threshold;
+        let semaphore = Arc::clone(&self.semaphore);
 
         let runtime = get_runtime();
         runtime.spawn(async move {
-            // 2. check if bytecode is all zeros
-            if code_hash.iter().all(|&b| b == 0) {
+            let _permit = semaphore.acquire().await.unwrap();
+            // Check if the bytecode is all zeros
+            if code_hash.is_zero() {
                 return;
             }
-            // 3. check condition of compile
+            // Check if the bytecode should be compiled
             if new_count == threshold {
                 // Compile the bytecode
                 let label = code_hash.to_string().leak();
@@ -74,7 +95,7 @@ impl CompileWorker {
                     }
                 }
             }
-            // 4. new count db commit
+            // Commit the new count to the database
             {
                 let db_write = match sled_db.write() {
                     Ok(lock) => lock,
@@ -82,6 +103,6 @@ impl CompileWorker {
                 };
                 db_write.put(code_hash, &new_count.to_be_bytes()).unwrap();
             }
-        });
+        })
     }
 }

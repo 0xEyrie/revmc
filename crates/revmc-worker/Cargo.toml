@@ -1,6 +1,7 @@
 [package]
 name = "revmc-worker"
-description = "EVM bytecode runtime compiling worker"
+description = "Evm Compiler worker that compiles in node runtime"
+
 
 version.workspace = true
 authors.workspace = true
