@@ -84,7 +84,6 @@ impl<DB> EXTCompileWorker<DB> {
         <DB as revm::Database>::Error: Debug + Display,
     {
         for access_item in access_list.iter() {
-            println!("Accessing item: {:#?}", access_item.address);
             let acc_info = {
                 match state_db.basic(access_item.address) {
                     Ok(Some(acc_info)) => acc_info,
@@ -96,7 +95,6 @@ impl<DB> EXTCompileWorker<DB> {
             };
 
             // loads into cache
-            println!("Cached {:#?}", access_item.address);
             self.get_function(acc_info.code_hash())?;
         }
 

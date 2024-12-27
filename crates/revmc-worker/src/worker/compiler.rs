@@ -86,11 +86,9 @@ impl CompileWorker {
                 let label = code_hash;
                 match aot_runtime.compile(label, bytecode.as_ref(), spec_id) {
                     Ok(_) => {
-                        println!("Compiled: bytecode hash {}", code_hash);
                         tracing::info!("Compiled: bytecode hash {}", code_hash);
                     }
                     Err(err) => {
-                        println!("Compile: with bytecode hash {} {:#?}", code_hash, err);
                         tracing::error!("Compile: with bytecode hash {} {:#?}", code_hash, err);
                         return;
                     }
