@@ -19,6 +19,7 @@ pub fn register_handler<DB: Database + 'static>(
 
         match context.external.get_function(code_hash) {
             Ok(None) => {
+                println!("Executing without AOT Compiled Fn\n");
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
                 context.external.work(spec_id, code_hash, bytecode.original_bytes());
 
