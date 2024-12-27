@@ -93,16 +93,9 @@ impl<DB> EXTCompileWorker<DB> {
                     }
                 }
             };
-            let code = {
-                match state_db.code_by_hash(acc_info.code_hash()) {
-                    Ok(code) => code,
-                    Err(err) => return Err(ExtError::CodeNoneExists { err: err.to_string() }),
-                }
-            };
-            let code_hash = code.hash_slow();
 
             // loads into cache
-            self.get_function(code_hash).unwrap();
+            self.get_function(acc_info.code_hash())?;
         }
 
         Ok(())
