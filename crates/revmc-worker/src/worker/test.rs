@@ -11,7 +11,7 @@ use std::thread;
 
 use crate::{register_handler, EXTCompileWorker};
 
-fn setup_test_cache<DB>(ext_worker: &mut EXTCompileWorker<DB>, bytecode: &Bytecode) {
+fn setup_test_cache(ext_worker: &mut EXTCompileWorker, bytecode: &Bytecode) {
     let code_hash = bytecode.hash_slow();
 
     ext_worker.work(revm_primitives::SpecId::OSAKA, code_hash, bytecode.bytes());
@@ -41,7 +41,7 @@ fn fib_call_data() -> Bytes {
 
 #[test]
 fn test_compiler_cache_retrieval() {
-    let mut ext_worker = EXTCompileWorker::<EmptyDB>::new(1, 3, 128);
+    let mut ext_worker = EXTCompileWorker::new(1, 3, 128);
     let bytecode = Bytecode::new_raw(Bytes::from_static(&[1, 2, 3]));
 
     setup_test_cache(&mut ext_worker, &bytecode);
@@ -49,7 +49,7 @@ fn test_compiler_cache_retrieval() {
 
 #[test]
 fn test_compiler_cache_load_access_list() {
-    let mut ext_worker = EXTCompileWorker::<CacheDB<EmptyDB>>::new(1, 3, 128);
+    let mut ext_worker = EXTCompileWorker::new(1, 3, 128);
 
     // Create
     let caller_address = address!("e100713fc15400d1e94096a545879e7c647001e0");
@@ -57,10 +57,11 @@ fn test_compiler_cache_load_access_list() {
     let db = CacheDB::new(EmptyDB::new());
 
     let fib_bytecode = Bytecode::new_raw(fib_bin.into());
+    let fib_hash = fib_bytecode.hash_slow();
     setup_test_cache(&mut ext_worker, &fib_bytecode);
 
     let mut evm = Evm::builder()
-        .with_external_context(EXTCompileWorker::<CacheDB<EmptyDB>>::new(1, 3, 128))
+        .with_external_context(EXTCompileWorker::new(1, 3, 128))
         .with_db(db)
         .append_handler_register(register_handler)
         .build();
@@ -94,7 +95,7 @@ fn test_compiler_cache_load_access_list() {
     }]);
 
     // Cache upfront
-    if let Err(err) = ext_worker.cache_load_access_list(access_list.to_vec(), evm.db().clone()) {
+    if let Err(err) = ext_worker.preload_cache(vec![fib_hash]) {
         println!("While cache_load_access_list: {:#?}", err);
     };
     thread::sleep(std::time::Duration::from_secs(2));

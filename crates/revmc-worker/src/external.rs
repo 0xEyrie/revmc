@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Display},
+    fmt::Debug,
     num::NonZeroUsize,
     sync::{Arc, RwLock},
 };
@@ -11,8 +11,7 @@ use crate::{
 use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
-use revm::Database;
-use revm_primitives::{AccessListItem, SpecId};
+use revm_primitives::SpecId;
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
@@ -23,13 +22,12 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 /// Heavily reduces disk I/O
 
 #[derive(Debug)]
-pub struct EXTCompileWorker<DB> {
+pub struct EXTCompileWorker {
     compile_worker: Box<CompileWorker>,
     pub cache: LruCache<B256, (EvmCompilerFn, libloading::Library)>,
-    _marker: std::marker::PhantomData<DB>,
 }
 
-impl<DB> EXTCompileWorker<DB> {
+impl EXTCompileWorker {
     pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
         let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
@@ -37,7 +35,6 @@ impl<DB> EXTCompileWorker<DB> {
         Self {
             compile_worker: Box::new(compiler),
             cache: LruCache::new(NonZeroUsize::new(cache_size_words).unwrap()),
-            _marker: std::marker::PhantomData,
         }
     }
 
@@ -78,27 +75,9 @@ impl<DB> EXTCompileWorker<DB> {
         self.compile_worker.work(spec_id, code_hash, bytecode);
     }
 
-    pub fn cache_load_access_list(
-        &mut self,
-        access_list: Vec<AccessListItem>,
-        mut state_db: DB,
-    ) -> Result<(), ExtError>
-    where
-        DB: Database,
-        <DB as revm::Database>::Error: Debug + Display,
-    {
-        for access_item in access_list.iter() {
-            let acc_info = {
-                match state_db.basic(access_item.address) {
-                    Ok(Some(acc_info)) => acc_info,
-                    Ok(None) => return Err(ExtError::IllegalAccessListAccess),
-                    Err(err) => {
-                        return Err(ExtError::StateDBAccInfoFetchError { err: err.to_string() })
-                    }
-                }
-            };
-
-            self.get_function(acc_info.code_hash())?;
+    pub fn preload_cache(&mut self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
+        for code_hash in code_hashes.into_iter() {
+            self.get_function(code_hash)?;
         }
 
         Ok(())
