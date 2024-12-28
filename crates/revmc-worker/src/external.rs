@@ -17,6 +17,11 @@ use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
 
+/// Compiler Worker as external context.
+///
+/// ExternalFn fetching is optimized by using LRU Cache
+/// Heavily reduces disk I/O
+
 #[derive(Debug)]
 pub struct EXTCompileWorker<DB> {
     compile_worker: Box<CompileWorker>,
@@ -93,7 +98,6 @@ impl<DB> EXTCompileWorker<DB> {
                 }
             };
 
-            // loads into cache
             self.get_function(acc_info.code_hash())?;
         }
 
