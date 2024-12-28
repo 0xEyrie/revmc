@@ -12,7 +12,7 @@ use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
 use revm::Database;
-use revm_primitives::{AccessListItem, SpecId};
+use revm_primitives::{AccessListItem, FixedBytes, SpecId};
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
@@ -20,7 +20,7 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 #[derive(Debug)]
 pub struct EXTCompileWorker<DB> {
     compile_worker: Box<CompileWorker>,
-    pub cache: LruCache<String, (EvmCompilerFn, libloading::Library)>,
+    pub cache: LruCache<FixedBytes<32>, (EvmCompilerFn, libloading::Library)>,
     _marker: std::marker::PhantomData<DB>,
 }
 
@@ -41,12 +41,11 @@ impl<DB> EXTCompileWorker<DB> {
             return Ok(None);
         }
 
-        let label = code_hash.to_string();
-        if let Some((f, _)) = self.cache.get(&label) {
+        if let Some((f, _)) = self.cache.get(&code_hash) {
             return Ok(Some(*f));
         }
 
-        let so_file = aot_store_path().join(&label).join("a.so");
+        let so_file = aot_store_path().join(&code_hash.to_string()).join("a.so");
         let exist: bool = so_file.try_exists().unwrap_or(false);
         if exist {
             {
@@ -57,9 +56,9 @@ impl<DB> EXTCompileWorker<DB> {
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
-                self.cache.put(label.to_string(), (f, lib));
+                self.cache.put(code_hash, (f, lib));
 
-                if let Some((f, _)) = self.cache.get(&label) {
+                if let Some((f, _)) = self.cache.get(&code_hash) {
                     return Ok(Some(*f));
                 } else {
                     return Err(ExtError::LruCacheGetError);
