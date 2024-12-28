@@ -1,7 +1,7 @@
 use super::path::aot_store_path;
 use crate::error::CompilerError;
 
-use revm_primitives::{FixedBytes, SpecId};
+use revm_primitives::{Bytes, SpecId, B256};
 use revmc::{EvmCompiler, OptimizationLevel};
 use revmc_llvm::EvmLlvmBackend;
 
@@ -17,8 +17,8 @@ impl AotRuntime {
 
     pub(crate) fn compile(
         &self,
-        code_hash: FixedBytes<32>,
-        bytecode: &[u8],
+        code_hash: B256,
+        bytecode: Bytes,
         spec_id: SpecId,
     ) -> Result<(), CompilerError> {
         let _ = color_eyre::install();
@@ -53,7 +53,7 @@ impl AotRuntime {
 
         compiler.inspect_stack_length(true);
         let _f_id = compiler
-            .translate(&name, bytecode, spec_id)
+            .translate(&name, &bytecode, spec_id)
             .map_err(|err| CompilerError::BytecodeTranslation { err: err.to_string() })?;
 
         let module_out_dir = out_dir.join(&name);

@@ -83,8 +83,7 @@ impl CompileWorker {
             // Check if the bytecode should be compiled
             if new_count == threshold {
                 // Compile the bytecode
-                let label = code_hash;
-                match aot_runtime.compile(label, bytecode.as_ref(), spec_id) {
+                match aot_runtime.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
                         tracing::info!("Compiled: bytecode hash {}", code_hash);
                     }

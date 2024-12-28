@@ -12,7 +12,7 @@ use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
 use revm::Database;
-use revm_primitives::{AccessListItem, FixedBytes, SpecId};
+use revm_primitives::{AccessListItem, SpecId};
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
@@ -25,7 +25,7 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 #[derive(Debug)]
 pub struct EXTCompileWorker<DB> {
     compile_worker: Box<CompileWorker>,
-    pub cache: LruCache<FixedBytes<32>, (EvmCompilerFn, libloading::Library)>,
+    pub cache: LruCache<B256, (EvmCompilerFn, libloading::Library)>,
     _marker: std::marker::PhantomData<DB>,
 }
 
