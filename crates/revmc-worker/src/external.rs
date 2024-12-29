@@ -1,4 +1,4 @@
-use std::{ fmt::Debug, num::NonZeroUsize, sync::{ Arc, RwLock } };
+use std::{ fmt::Debug, num::NonZeroUsize, sync::{ Arc, Mutex, RwLock } };
 
 use crate::{ error::ExtError, worker::{ aot_store_path, CompileWorker, SledDB } };
 use alloy_primitives::B256;
@@ -21,14 +21,20 @@ pub struct EXTCompileWorker {
 }
 
 impl EXTCompileWorker {
-    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
+    pub fn new(
+        threshold: u64,
+        max_concurrent_tasks: usize,
+        cache_size_words: usize
+    ) -> Arc<Mutex<Self>> {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
         let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
-        Self {
-            compile_worker: Box::new(compiler),
-            cache: LruCache::new(NonZeroUsize::new(cache_size_words).unwrap()),
-        }
+        Arc::new(
+            Mutex::new(Self {
+                compile_worker: Box::new(compiler),
+                cache: LruCache::new(NonZeroUsize::new(cache_size_words).unwrap()),
+            })
+        )
     }
 
     pub fn get_function(&mut self, code_hash: B256) -> Result<Option<EvmCompilerFn>, ExtError> {
