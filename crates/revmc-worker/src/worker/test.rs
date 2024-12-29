@@ -49,7 +49,7 @@ fn test_compiler_cache_retrieval() {
     let ext_worker = EXTCompileWorker::new(1, 3, 128);
     let bytecode = Bytecode::new_raw(Bytes::from_static(&[1, 2, 3]));
 
-    setup_test_cache(&mut ext_worker.borrow_mut(), &bytecode);
+    setup_test_cache(&mut ext_worker.lock().unwrap(), &bytecode);
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn test_compiler_cache_load_access_list() {
 
     let fib_bytecode = Bytecode::new_raw(fib_bin.into());
     let fib_hash = fib_bytecode.hash_slow();
-    setup_test_cache(&mut ext_worker.borrow_mut(), &fib_bytecode);
+    setup_test_cache(&mut ext_worker.lock().unwrap(), &fib_bytecode);
 
     let mut evm = Evm::builder()
         .with_external_context(ext_worker.clone())
@@ -100,7 +100,7 @@ fn test_compiler_cache_load_access_list() {
     );
 
     // Cache upfront
-    if let Err(err) = ext_worker.borrow_mut().preload_cache(vec![fib_hash]) {
+    if let Err(err) = ext_worker.lock().unwrap().preload_cache(vec![fib_hash]) {
         println!("While cache_load_access_list: {:#?}", err);
     }
     thread::sleep(std::time::Duration::from_secs(2));

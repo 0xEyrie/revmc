@@ -1,4 +1,4 @@
-use std::{ cell::RefCell, panic::{ catch_unwind, AssertUnwindSafe }, rc::Rc, sync::Arc };
+use std::{ panic::{ catch_unwind, AssertUnwindSafe }, sync::{ Arc, Mutex } };
 
 use revm::{ handler::register::EvmHandler, Database };
 
@@ -6,18 +6,21 @@ use crate::EXTCompileWorker;
 
 // Register handler for external context to support background compile worker in node runtime
 pub fn register_handler<DB: Database + 'static>(
-    handler: &mut EvmHandler<'_, Rc<RefCell<EXTCompileWorker>>, DB>
+    handler: &mut EvmHandler<'_, Arc<Mutex<EXTCompileWorker>>, DB>
 ) {
     let prev = handler.execution.execute_frame.clone();
     handler.execution.execute_frame = Arc::new(move |frame, memory, tables, context| {
         let interpreter = frame.interpreter_mut();
         let code_hash = interpreter.contract.hash.unwrap_or_default();
         let spec_id = context.evm.inner.spec_id();
-        let function_result = context.external.borrow_mut().get_function(code_hash);
+        let function_result = context.external.lock().unwrap().get_function(code_hash);
         match function_result {
             Ok(None) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
-                context.external.borrow_mut().work(spec_id, code_hash, bytecode.original_bytes());
+                context.external
+                    .lock()
+                    .unwrap()
+                    .work(spec_id, code_hash, bytecode.original_bytes());
 
                 prev(frame, memory, tables, context)
             }
