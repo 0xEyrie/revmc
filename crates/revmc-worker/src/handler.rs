@@ -17,14 +17,11 @@ pub fn register_handler<DB: Database + 'static>(
         let code_hash = interpreter.contract.hash.unwrap_or_default();
         let spec_id = context.evm.inner.spec_id();
 
-        let function_result = context.external.get_function(code_hash);
-
-        match function_result {
+        match context.external.get_function(code_hash) {
             Ok(None) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
                 context.external.work(spec_id, code_hash, bytecode.original_bytes());
-
                 prev(frame, memory, tables, context)
             }
 

@@ -14,8 +14,14 @@ pub enum ExtError {
     #[error("Illegal access list access")]
     IllegalAccessListAccess,
 
-    #[error("Code none exixts error: {err}")]
+    #[error("Code none exists error: {err}")]
     CodeNoneExists { err: String },
+
+    #[error("RwLock poison error: {err}")]
+    RwLockPoison { err: String },
+
+    #[error("Mutex poison error: {err}")]
+    MutexPoison { err: String },
 
     #[error("Get from lib, externalfn")]
     LruCacheGetError,

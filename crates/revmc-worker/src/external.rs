@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     num::NonZeroUsize,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, RwLock, TryLockError},
 };
 
 use crate::{
@@ -38,13 +38,29 @@ impl EXTCompileWorker {
         }
     }
 
+    /// Does not utilize EXT for Address Zero
     pub fn get_function(&self, code_hash: B256) -> Result<Option<EvmCompilerFn>, ExtError> {
         if code_hash.is_zero() {
             return Ok(None);
         }
 
-        if let Some((f, _)) = self.cache.write().unwrap().get(&code_hash) {
-            return Ok(Some(*f));
+        {
+            let mut write_lock = match self.cache.try_write() {
+                Ok(g) => g,
+                Err(err) => match err {
+                    // Compile in progress, resume without EXT
+                    TryLockError::WouldBlock => {
+                        return Ok(None);
+                    }
+                    TryLockError::Poisoned(err) => {
+                        return Err(ExtError::RwLockPoison { err: err.to_string() });
+                    }
+                },
+            };
+
+            if let Some((f, _)) = write_lock.get(&code_hash) {
+                return Ok(Some(*f));
+            }
         }
 
         let so_file = aot_store_path().join(code_hash.to_string()).join("a.so");
@@ -57,11 +73,16 @@ impl EXTCompileWorker {
                     *lib.get(code_hash.to_string().as_ref())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
+
                 // The function holds a reference to the library, so dropping the library will cause an error.
                 // Therefore, the library must also be stored in the cache.
-                self.cache.write().unwrap().put(code_hash, (f, lib));
+                let mut write_lock = match self.cache.write() {
+                    Ok(g) => g,
+                    Err(err) => return Err(ExtError::RwLockPoison { err: err.to_string() }),
+                };
+                write_lock.put(code_hash, (f, lib));
 
-                if let Some((f, _)) = self.cache.write().unwrap().get(&code_hash) {
+                if let Some((f, _)) = write_lock.get(&code_hash) {
                     return Ok(Some(*f));
                 } else {
                     return Err(ExtError::LruCacheGetError);
@@ -72,8 +93,19 @@ impl EXTCompileWorker {
         Ok(None)
     }
 
-    pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: revm::primitives::Bytes) {
-        self.compile_worker.lock().unwrap().work(spec_id, code_hash, bytecode);
+    pub fn work(
+        &self,
+        spec_id: SpecId,
+        code_hash: B256,
+        bytecode: revm::primitives::Bytes,
+    ) -> Result<(), ExtError> {
+        let mut write_lock = match self.compile_worker.lock() {
+            Ok(g) => g,
+            Err(err) => return Err(ExtError::MutexPoison { err: err.to_string() }),
+        };
+        write_lock.work(spec_id, code_hash, bytecode);
+
+        Ok(())
     }
 
     pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
