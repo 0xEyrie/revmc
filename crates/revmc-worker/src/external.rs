@@ -96,6 +96,7 @@ impl EXTCompileWorker {
         Ok(None)
     }
 
+    /// Stars compile routine JIT-ing the code referred by code_hash
     pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
         self.compile_worker.work(spec_id, code_hash, bytecode);
 
@@ -103,6 +104,7 @@ impl EXTCompileWorker {
     }
 
     /// Preloads cache upfront for the specified code hashes
+    ///
     /// Intended to improve runtime performance by
     /// reducing the overhead for fetching ExternalFn
     pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
