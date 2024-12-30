@@ -38,6 +38,8 @@ impl EXTCompileWorker {
         }
     }
 
+    /// Fetches the compiled function from disk, if exists
+    ///
     /// Does not utilize EXT for Address Zero
     /// When parallel compilation is in progress for the same code_hash,
     /// it resumes without utilizing the cached ExternalFn
@@ -46,6 +48,7 @@ impl EXTCompileWorker {
             return Ok(None);
         }
 
+        // Counter-intuitively, Write locks are required for reading from LRU Cache
         {
             let mut write_lock = match self.cache.try_write() {
                 Ok(g) => g,
