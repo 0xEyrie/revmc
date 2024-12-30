@@ -11,7 +11,7 @@ use crate::{
 use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
-use revm_primitives::SpecId;
+use revm_primitives::{Bytes, SpecId};
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
@@ -23,7 +23,7 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 /// so the cache helps reduce disk I/O cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
-    compile_worker: Mutex<Box<CompileWorker>>,
+    compile_worker: Mutex<CompileWorker>,
     pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
 }
 
@@ -33,12 +33,14 @@ impl EXTCompileWorker {
         let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
         Self {
-            compile_worker: Mutex::new(Box::new(compiler)),
+            compile_worker: Mutex::new(compiler),
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
         }
     }
 
     /// Does not utilize EXT for Address Zero
+    /// When parallel compilation is in progress for the same code_hash,
+    /// it resumes without utilizing the cached ExternalFn
     pub fn get_function(&self, code_hash: B256) -> Result<Option<EvmCompilerFn>, ExtError> {
         if code_hash.is_zero() {
             return Ok(None);
@@ -69,6 +71,7 @@ impl EXTCompileWorker {
             {
                 let lib = (unsafe { libloading::Library::new(&so_file) })
                     .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
+
                 let f: EvmCompilerFn = unsafe {
                     *lib.get(code_hash.to_string().as_ref())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
@@ -93,12 +96,7 @@ impl EXTCompileWorker {
         Ok(None)
     }
 
-    pub fn work(
-        &self,
-        spec_id: SpecId,
-        code_hash: B256,
-        bytecode: revm::primitives::Bytes,
-    ) -> Result<(), ExtError> {
+    pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
         let mut write_lock = match self.compile_worker.lock() {
             Ok(g) => g,
             Err(err) => return Err(ExtError::MutexPoison { err: err.to_string() }),
@@ -108,6 +106,9 @@ impl EXTCompileWorker {
         Ok(())
     }
 
+    /// Preloads cache upfront for the specified code hashes
+    /// Intended to improve runtime performance by
+    /// reducing the overhead for fetching ExternalFn
     pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
         for code_hash in code_hashes.into_iter() {
             self.get_function(code_hash)?;

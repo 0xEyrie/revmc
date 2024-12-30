@@ -8,6 +8,8 @@ use revm::{handler::register::EvmHandler, Database};
 use crate::EXTCompileWorker;
 
 // Register handler for external context to support background compile worker in node runtime
+//
+// Placeholders for handling unexpected behaviors are left to be placed by developers
 pub fn register_handler<DB: Database + 'static>(
     handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>,
 ) {
@@ -21,7 +23,10 @@ pub fn register_handler<DB: Database + 'static>(
             Ok(None) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
-                context.external.work(spec_id, code_hash, bytecode.original_bytes());
+                if let Err(_err) =
+                    context.external.work(spec_id, code_hash, bytecode.original_bytes())
+                {
+                };
                 prev(frame, memory, tables, context)
             }
 
@@ -30,17 +35,12 @@ pub fn register_handler<DB: Database + 'static>(
                     f.call_with_interpreter_and_memory(interpreter, memory, context)
                 }));
 
-                if let Err(err) = &res {
-                    tracing::error!("Extern Fn Call: with bytecode hash {} {:#?}", code_hash, err);
-                }
+                if let Err(_err) = &res {}
 
                 Ok(res.unwrap())
             }
 
-            Err(err) => {
-                tracing::error!("Get function: with bytecode hash {} {:#?}", code_hash, err);
-                prev(frame, memory, tables, context)
-            }
+            Err(_err) => prev(frame, memory, tables, context),
         }
     });
 }

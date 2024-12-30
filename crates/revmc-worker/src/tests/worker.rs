@@ -14,7 +14,7 @@ use crate::{register_handler, EXTCompileWorker};
 fn setup_test_cache(ext_worker: &Arc<EXTCompileWorker>, bytecode: &Bytecode) {
     let code_hash = bytecode.hash_slow();
 
-    ext_worker.work(revm_primitives::SpecId::OSAKA, code_hash, bytecode.bytes());
+    ext_worker.work(revm_primitives::SpecId::OSAKA, code_hash, bytecode.bytes()).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     assert_eq!(ext_worker.get_function(code_hash).unwrap().is_some(), true);

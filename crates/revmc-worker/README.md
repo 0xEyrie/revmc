@@ -1,1 +1,3 @@
-../../README.md
+# revmc-worker
+
+EVM runtime jit worker implementation.

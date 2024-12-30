@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use super::path::sleddb_path;
 
+/// In-Memory Database for local storage of compiled multiple ExternalFns
 #[derive(Debug)]
 pub(crate) struct SledDB<K>
 where
