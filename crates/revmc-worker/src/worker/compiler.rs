@@ -51,12 +51,7 @@ impl CompileWorker {
     /// * `spec_id` - The specification ID for the EVM.
     /// * `code_hash` - The hash of the bytecode to be compiled.
     /// * `bytecode` - The bytecode to be compiled.
-    pub(crate) fn work(
-        &mut self,
-        spec_id: SpecId,
-        code_hash: B256,
-        bytecode: Bytes,
-    ) -> JoinHandle<()> {
+    pub(crate) fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> JoinHandle<()> {
         // Read the current count of the bytecode hash from the embedded database
         let count = {
             let db_read = match self.sled_db.read() {

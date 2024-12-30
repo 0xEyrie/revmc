@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     num::NonZeroUsize,
-    sync::{Arc, Mutex, RwLock, TryLockError},
+    sync::{Arc, RwLock, TryLockError},
 };
 
 use crate::{
@@ -23,7 +23,7 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 /// so the cache helps reduce disk I/O cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
-    compile_worker: Mutex<CompileWorker>,
+    compile_worker: Arc<CompileWorker>,
     pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
 }
 
@@ -33,7 +33,7 @@ impl EXTCompileWorker {
         let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
         Self {
-            compile_worker: Mutex::new(compiler),
+            compile_worker: Arc::new(compiler),
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
         }
     }
@@ -97,11 +97,7 @@ impl EXTCompileWorker {
     }
 
     pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
-        let mut write_lock = match self.compile_worker.lock() {
-            Ok(g) => g,
-            Err(err) => return Err(ExtError::MutexPoison { err: err.to_string() }),
-        };
-        write_lock.work(spec_id, code_hash, bytecode);
+        self.compile_worker.work(spec_id, code_hash, bytecode);
 
         Ok(())
     }
