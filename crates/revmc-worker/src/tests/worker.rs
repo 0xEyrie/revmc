@@ -1,22 +1,17 @@
-use alloy_primitives::{ address, Keccak256, Uint };
-use revm::{ db::{ CacheDB, EmptyDB }, Evm };
-use revm_primitives::{
-    hex::FromHex,
-    AccessList,
-    AccessListItem,
-    AccountInfo,
-    BlockEnv,
-    Bytecode,
-    Bytes,
-    TxEnv,
-    TxKind,
-    B256,
+use alloy_primitives::{address, Keccak256, Uint};
+use revm::{
+    db::{CacheDB, EmptyDB},
+    Evm,
 };
-use std::thread;
+use revm_primitives::{
+    hex::FromHex, AccessList, AccessListItem, AccountInfo, BlockEnv, Bytecode, Bytes, TxEnv,
+    TxKind, B256,
+};
+use std::{sync::Arc, thread};
 
-use crate::{ register_handler, EXTCompileWorker };
+use crate::{register_handler, EXTCompileWorker};
 
-fn setup_test_cache(ext_worker: &mut EXTCompileWorker, bytecode: &Bytecode) {
+fn setup_test_cache(ext_worker: &Arc<EXTCompileWorker>, bytecode: &Bytecode) {
     let code_hash = bytecode.hash_slow();
 
     ext_worker.work(revm_primitives::SpecId::OSAKA, code_hash, bytecode.bytes());
@@ -46,15 +41,15 @@ fn fib_call_data() -> Bytes {
 
 #[test]
 fn test_compiler_cache_retrieval() {
-    let ext_worker = EXTCompileWorker::new(1, 3, 128);
+    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
     let bytecode = Bytecode::new_raw(Bytes::from_static(&[1, 2, 3]));
 
-    setup_test_cache(&mut ext_worker.lock().unwrap(), &bytecode);
+    setup_test_cache(&ext_worker, &bytecode);
 }
 
 #[test]
 fn test_compiler_cache_load_access_list() {
-    let ext_worker = EXTCompileWorker::new(1, 3, 128);
+    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
 
     // Create
     let caller_address = address!("e100713fc15400d1e94096a545879e7c647001e0");
@@ -64,7 +59,7 @@ fn test_compiler_cache_load_access_list() {
 
     let fib_bytecode = Bytecode::new_raw(fib_bin.into());
     let fib_hash = fib_bytecode.hash_slow();
-    setup_test_cache(&mut ext_worker.lock().unwrap(), &fib_bytecode);
+    setup_test_cache(&ext_worker, &fib_bytecode);
 
     let mut evm = Evm::builder()
         .with_external_context(ext_worker.clone())
@@ -85,22 +80,23 @@ fn test_compiler_cache_load_access_list() {
 
     // Manually insert account info for deployed contract
     // Not necessary in practice
-    evm.db_mut().insert_account_info(deployed_address, AccountInfo {
-        code_hash: fib_bytecode.hash_slow(),
-        code: Some(fib_bytecode),
-        ..Default::default()
-    });
-
-    // Call
-    let access_list = AccessList(
-        vec![AccessListItem {
-            address: deployed_address,
-            storage_keys: vec![B256::ZERO],
-        }]
+    evm.db_mut().insert_account_info(
+        deployed_address,
+        AccountInfo {
+            code_hash: fib_bytecode.hash_slow(),
+            code: Some(fib_bytecode),
+            ..Default::default()
+        },
     );
 
+    // Call
+    let access_list = AccessList(vec![AccessListItem {
+        address: deployed_address,
+        storage_keys: vec![B256::ZERO],
+    }]);
+
     // Cache upfront
-    if let Err(err) = ext_worker.lock().unwrap().preload_cache(vec![fib_hash]) {
+    if let Err(err) = ext_worker.preload_cache(vec![fib_hash]) {
         println!("While cache_load_access_list: {:#?}", err);
     }
     thread::sleep(std::time::Duration::from_secs(2));
