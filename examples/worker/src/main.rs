@@ -3,20 +3,19 @@
 use revm::{
     db::{CacheDB, EmptyDB},
     primitives::{
-        address, AccessList, AccessListItem, AccountInfo, Bytecode, TransactTo, B256, U256,
+        address, hex, AccessList, AccessListItem, AccountInfo, Bytecode, TransactTo, B256, U256,
     },
 };
 use revmc_worker::{register_handler, EXTCompileWorker};
 use std::thread;
 
-use common::FIBONACCI_CODE;
-
-mod common;
+pub const FIBONACCI_CODE: &[u8] =
+    &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
 
 /// First call executes the transaction and compiles into embedded db
 /// embedded db: ~/.aotstore/db, ~/.aotstore/output
-/// It is crucial to reset the embedded db for reproducing the same steps
-/// Otherwise, both calls will utilize cached ExternalFn
+/// It is crucial to reset the embedded db and do 'cargo clean' for reproducing the same steps
+/// Otherwise, both calls will utilize cached ExternalFn or unexpected behavior will happen
 ///
 /// Second call loads the ExternalFn from embedded db to cache
 /// and executes transaction with it
@@ -38,7 +37,7 @@ fn main() {
     evm.db_mut().insert_account_info(
         fibonacci_address,
         AccountInfo {
-            code_hash: fib_hash.into(),
+            code_hash: fib_hash,
             code: Some(Bytecode::new_raw(FIBONACCI_CODE.into())),
             ..Default::default()
         },

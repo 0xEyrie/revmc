@@ -36,7 +36,6 @@ pub fn register_handler<DB: Database + 'static>(
                 }));
 
                 if let Err(_err) = &res {}
-
                 Ok(res.unwrap())
             }
 

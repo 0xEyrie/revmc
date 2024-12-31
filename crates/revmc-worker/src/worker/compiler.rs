@@ -69,6 +69,7 @@ impl CompileWorker {
         let semaphore = Arc::clone(&self.semaphore);
 
         let runtime = get_runtime();
+
         runtime.spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
             // Check if the bytecode is all zeros
@@ -80,10 +81,10 @@ impl CompileWorker {
                 // Compile the bytecode
                 match aot_runtime.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
-                        tracing::info!("Compiled: bytecode hash {}", code_hash);
+                        println!("Compiled: bytecode hash {code_hash}");
                     }
                     Err(err) => {
-                        tracing::error!("Compile: with bytecode hash {} {:#?}", code_hash, err);
+                        println!("Compile: with bytecode hash {code_hash} {err:#?}");
                         return;
                     }
                 }
