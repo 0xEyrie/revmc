@@ -12,15 +12,8 @@ keywords.workspace = true
 repository.workspace = true
 exclude.workspace = true
 
-[build-dependencies]
-revmc-build.workspace = true
-cc = "1.0"
-
 [dependencies]
 revmc = { workspace = true, features = ["llvm-prefer-dynamic"] }
 revmc-worker.workspace = true
-
-revmc-builtins = { workspace = true, default-features = false }
-revmc-context = { workspace = true, default-features = false }
 
 revm = { workspace = true, default-features = false }
