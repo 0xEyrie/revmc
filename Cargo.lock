@@ -2494,6 +2494,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "revmc-examples-worker"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "revm",
+ "revmc",
+ "revmc-build",
+ "revmc-builtins",
+ "revmc-context",
+ "revmc-worker",
+]
+
+[[package]]
 name = "revmc-fuzz"
 version = "0.0.0"
 dependencies = [
