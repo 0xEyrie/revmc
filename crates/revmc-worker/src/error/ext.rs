@@ -20,9 +20,6 @@ pub enum ExtError {
     #[error("RwLock poison error: {err}")]
     RwLockPoison { err: String },
 
-    #[error("Mutex poison error: {err}")]
-    MutexPoison { err: String },
-
     #[error("Get from lib, externalfn")]
     LruCacheGetError,
 }

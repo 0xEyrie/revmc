@@ -49,7 +49,7 @@ fn test_compiler_cache_retrieval() {
 
 #[test]
 fn test_compiler_cache_load_access_list() {
-    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
+    let ext_worker = EXTCompileWorker::new(1, 3, 128);
 
     // Create
     let caller_address = address!("e100713fc15400d1e94096a545879e7c647001e0");

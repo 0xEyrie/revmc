@@ -605,4 +605,3 @@ mod default_attrs {
         (std::mem::size_of::<T>(), std::mem::align_of::<T>())
     }
 }
-

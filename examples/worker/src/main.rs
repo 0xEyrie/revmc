@@ -1,6 +1,6 @@
 //! Simple compiler worker example.
 
-use std::{sync::Arc, thread};
+use std::thread;
 
 use common::{FIBONACCI_CODE, FIBONACCI_HASH};
 use revm::{
@@ -14,7 +14,7 @@ use revmc_worker::{register_handler, EXTCompileWorker};
 mod common;
 
 fn main() {
-    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
+    let ext_worker = EXTCompileWorker::new(1, 3, 128);
 
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()

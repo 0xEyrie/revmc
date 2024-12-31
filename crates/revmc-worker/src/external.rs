@@ -28,14 +28,14 @@ pub struct EXTCompileWorker {
 }
 
 impl EXTCompileWorker {
-    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
+    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Arc<Self> {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
         let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
-        Self {
+        Arc::new(Self {
             compile_worker: Arc::new(compiler),
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
-        }
+        })
     }
 
     /// Fetches the compiled function from disk, if exists
@@ -80,8 +80,9 @@ impl EXTCompileWorker {
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
-                // The function holds a reference to the library, so dropping the library will cause an error.
-                // Therefore, the library must also be stored in the cache.
+                // The function holds a reference to the library, so dropping the library will cause
+                // an error. Therefore, the library must also be stored in the
+                // cache.
                 let mut write_lock = match self.cache.write() {
                     Ok(g) => g,
                     Err(err) => return Err(ExtError::RwLockPoison { err: err.to_string() }),

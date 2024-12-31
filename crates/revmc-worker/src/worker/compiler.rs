@@ -1,8 +1,7 @@
 use alloy_primitives::B256;
-use revmc::{primitives::Bytes, primitives::SpecId};
+use revmc::primitives::{Bytes, SpecId};
 use std::sync::{Arc, RwLock};
-use tokio::sync::Semaphore;
-use tokio::task::JoinHandle;
+use tokio::{sync::Semaphore, task::JoinHandle};
 
 use super::{
     aot::{AotCfg, AotRuntime},
@@ -28,7 +27,8 @@ impl CompileWorker {
     ///
     /// # Arguments
     ///
-    /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is compiled.
+    /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is
+    ///   compiled.
     /// * `sled_db` - A reference-counted, thread-safe handle to the sled database.
     /// * `max_concurrent_tasks` - The maximum number of concurrent tasks allowed.
     pub(crate) fn new(
