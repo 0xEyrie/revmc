@@ -19,7 +19,4 @@ pub enum ExtError {
 
     #[error("RwLock poison error: {err}")]
     RwLockPoison { err: String },
-
-    #[error("Get from lib, externalfn")]
-    LruCacheGetError,
 }

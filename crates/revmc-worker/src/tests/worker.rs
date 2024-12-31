@@ -9,15 +9,19 @@ use revm_primitives::{
 };
 use std::{sync::Arc, thread};
 
-use crate::{register_handler, EXTCompileWorker};
+use crate::{register_handler, EXTCompileWorker, FetchResult};
 
 fn setup_test_cache(ext_worker: &Arc<EXTCompileWorker>, bytecode: &Bytecode) {
     let code_hash = bytecode.hash_slow();
 
     ext_worker.work(revm_primitives::SpecId::OSAKA, code_hash, bytecode.bytes()).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(2));
-
-    assert_eq!(ext_worker.get_function(code_hash).unwrap().is_some(), true);
+    let result = ext_worker.get_function(code_hash).unwrap();
+    assert_ne!(
+        result,
+        FetchResult::NotFound,
+        "Expected FetchResult::Found, but got FetchResult::NotFound"
+    );
 }
 
 #[inline]
@@ -58,7 +62,7 @@ fn test_compiler_cache_load_access_list() {
     let db = CacheDB::new(EmptyDB::new());
 
     let fib_bytecode = Bytecode::new_raw(fib_bin.into());
-    let fib_hash = fib_bytecode.hash_slow();
+    let code_hash = fib_bytecode.hash_slow();
     setup_test_cache(&ext_worker, &fib_bytecode);
 
     let mut evm = Evm::builder()
@@ -77,35 +81,28 @@ fn test_compiler_cache_load_access_list() {
     evm.context.evm.inner.env.tx.data = Bytes::from_hex(fib_bin).unwrap();
 
     let deployed_address = address!("ec30481c768e48d34ea8fc2bebcfeaddeba6bfa4");
-
+    let code = Some(fib_bytecode);
     // Manually insert account info for deployed contract
     // Not necessary in practice
     evm.db_mut().insert_account_info(
         deployed_address,
-        AccountInfo {
-            code_hash: fib_bytecode.hash_slow(),
-            code: Some(fib_bytecode),
-            ..Default::default()
-        },
+        AccountInfo { code_hash, code, ..Default::default() },
     );
 
-    // Call
-    let access_list = AccessList(vec![AccessListItem {
-        address: deployed_address,
-        storage_keys: vec![B256::ZERO],
-    }]);
-
-    // Cache upfront
-    if let Err(err) = ext_worker.preload_cache(vec![fib_hash]) {
-        println!("While cache_load_access_list: {:#?}", err);
-    }
+    assert!(ext_worker.preload_cache(vec![code_hash]).is_ok(), "Failed to Preload Cache");
     thread::sleep(std::time::Duration::from_secs(2));
+    {
+        let worker = ext_worker.clone();
+        let mut cache = worker.cache.write().unwrap();
+        assert!(cache.get(&code_hash).is_some(), "Failed to Update Cache");
+    }
 
     evm.context.evm.inner.env.tx.transact_to = TxKind::Call(deployed_address);
     evm.context.evm.inner.env.tx.data = fib_call_data();
-    evm.context.evm.inner.env.tx.access_list = access_list.to_vec();
-
-    if let Err(err) = evm.transact() {
-        println!("While evm transact: {:#?}", err)
-    };
+    evm.context.evm.inner.env.tx.access_list = AccessList(vec![AccessListItem {
+        address: deployed_address,
+        storage_keys: vec![B256::ZERO],
+    }])
+    .to_vec();
+    assert!(evm.transact().is_ok(), "Failed to Transact Evm");
 }

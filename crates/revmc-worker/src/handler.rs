@@ -5,11 +5,9 @@ use std::{
 
 use revm::{handler::register::EvmHandler, Database};
 
-use crate::EXTCompileWorker;
+use crate::{EXTCompileWorker, FetchResult};
 
 // Register handler for external context to support background compile worker in node runtime
-//
-// Placeholders for handling unexpected behaviors are left to be placed by developers
 pub fn register_handler<DB: Database + 'static>(
     handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>,
 ) {
@@ -20,26 +18,37 @@ pub fn register_handler<DB: Database + 'static>(
         let spec_id = context.evm.inner.spec_id();
 
         match context.external.get_function(code_hash) {
-            Ok(None) => {
+            Ok(FetchResult::NotFound) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
-                if let Err(_err) =
+                if let Err(err) =
                     context.external.work(spec_id, code_hash, bytecode.original_bytes())
                 {
-                };
+                    tracing::error!("Worker failed: with bytecode hash {}: {:#?}", code_hash, err);
+                }
                 prev(frame, memory, tables, context)
             }
 
-            Ok(Some(f)) => {
+            Ok(FetchResult::Found(f)) => {
                 let res = catch_unwind(AssertUnwindSafe(|| unsafe {
                     f.call_with_interpreter_and_memory(interpreter, memory, context)
                 }));
 
-                if let Err(_err) = &res {}
+                if let Err(err) = &res {
+                    tracing::error!(
+                        "AOT function call error: with bytecode hash {} {:#?}",
+                        code_hash,
+                        err
+                    );
+                }
+
                 Ok(res.unwrap())
             }
 
-            Err(_err) => prev(frame, memory, tables, context),
+            Err(err) => {
+                tracing::error!("Error occurred in handler: {:?}", err);
+                prev(frame, memory, tables, context)
+            }
         }
     });
 }

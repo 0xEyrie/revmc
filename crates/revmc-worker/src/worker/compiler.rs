@@ -81,10 +81,12 @@ impl CompileWorker {
                 // Compile the bytecode
                 match aot_runtime.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
-                        println!("Compiled: bytecode hash {code_hash}");
+                        tracing::info!("Compiled: bytecode hash {code_hash}");
                     }
                     Err(err) => {
-                        println!("Compile: with bytecode hash {code_hash} {err:#?}");
+                        tracing::error!(
+                            "Failed to Compile: with bytecode hash {code_hash} {err:#?}"
+                        );
                         return;
                     }
                 }

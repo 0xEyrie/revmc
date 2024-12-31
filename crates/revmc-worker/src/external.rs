@@ -16,6 +16,11 @@ use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
 
+#[derive(PartialEq, Debug)]
+pub enum FetchResult {
+    Found(EvmCompilerFn),
+    NotFound,
+}
 /// Compiler Worker as an external context.
 ///
 /// External function fetching is optimized by using an LRU Cache.
@@ -23,17 +28,18 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 /// so the cache helps reduce disk I/O cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
-    compile_worker: Arc<CompileWorker>,
+    compile_worker: CompileWorker,
     pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
 }
 
 impl EXTCompileWorker {
     pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Arc<Self> {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
-        let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
+        let compile_worker =
+            CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
         Arc::new(Self {
-            compile_worker: Arc::new(compiler),
+            compile_worker,
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
         })
     }
@@ -43,28 +49,24 @@ impl EXTCompileWorker {
     /// Does not utilize EXT for Address Zero
     /// When parallel compilation is in progress for the same code_hash,
     /// it resumes without utilizing the cached ExternalFn
-    pub fn get_function(&self, code_hash: B256) -> Result<Option<EvmCompilerFn>, ExtError> {
+    pub fn get_function(&self, code_hash: B256) -> Result<FetchResult, ExtError> {
         if code_hash.is_zero() {
-            return Ok(None);
+            return Ok(FetchResult::NotFound);
         }
 
         // Counter-intuitively, Write locks are required for reading from LRU Cache
         {
-            let mut write_lock = match self.cache.try_write() {
-                Ok(g) => g,
+            let cache = match self.cache.try_write() {
+                Ok(c) => Some(c),
                 Err(err) => match err {
-                    // Compile in progress, resume without EXT
-                    TryLockError::WouldBlock => {
-                        return Ok(None);
-                    }
-                    TryLockError::Poisoned(err) => {
-                        return Err(ExtError::RwLockPoison { err: err.to_string() });
-                    }
+                    /* in this case, read from file instead of cache */
+                    TryLockError::WouldBlock => None,
+                    TryLockError::Poisoned(err) => Some(err.into_inner()),
                 },
             };
 
-            if let Some((f, _)) = write_lock.get(&code_hash) {
-                return Ok(Some(*f));
+            if let Some((f, _)) = cache.unwrap().get(&code_hash) {
+                return Ok(FetchResult::Found(*f));
             }
         }
 
@@ -80,24 +82,17 @@ impl EXTCompileWorker {
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
-                // The function holds a reference to the library, so dropping the library will cause
-                // an error. Therefore, the library must also be stored in the
-                // cache.
-                let mut write_lock = match self.cache.write() {
-                    Ok(g) => g,
-                    Err(err) => return Err(ExtError::RwLockPoison { err: err.to_string() }),
-                };
-                write_lock.put(code_hash, (f, lib));
+                let mut cache = self
+                    .cache
+                    .write()
+                    .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
+                cache.put(code_hash, (f, lib));
 
-                if let Some((f, _)) = write_lock.get(&code_hash) {
-                    return Ok(Some(*f));
-                } else {
-                    return Err(ExtError::LruCacheGetError);
-                };
+                return Ok(FetchResult::Found(f));
             }
         }
 
-        Ok(None)
+        Ok(FetchResult::NotFound)
     }
 
     /// Stars compile routine JIT-ing the code referred by code_hash

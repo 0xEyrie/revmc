@@ -52,6 +52,8 @@ fn main() {
     evm.context.evm.env.tx.transact_to = TransactTo::Call(fibonacci_address);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     evm.context.evm.inner.env.tx.access_list = access_list.to_vec();
+    let mut result = evm.transact().unwrap();
+    println!("fib(10) = {}", U256::from_be_slice(result.result.output().unwrap()));
     thread::sleep(std::time::Duration::from_secs(2));
 
     ext_worker.preload_cache(vec![B256::from(fib_hash)]).unwrap();
@@ -61,6 +63,6 @@ fn main() {
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     evm.context.evm.inner.env.tx.access_list = access_list.to_vec();
 
-    let result = evm.transact().unwrap();
+    result = evm.transact().unwrap();
     println!("fib(10) = {}", U256::from_be_slice(result.result.output().unwrap()));
 }
