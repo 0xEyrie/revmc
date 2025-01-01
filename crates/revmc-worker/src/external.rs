@@ -1,14 +1,26 @@
-use std::{ fmt::Debug, num::NonZeroUsize, sync::{ Arc, Mutex, RwLock } };
+use std::{
+    fmt::Debug,
+    num::NonZeroUsize,
+    sync::{Arc, RwLock, TryLockError},
+};
 
-use crate::{ error::ExtError, worker::{ aot_store_path, CompileWorker, SledDB } };
+use crate::{
+    error::ExtError,
+    worker::{aot_store_path, CompileWorker, SledDB},
+};
 use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
-use revm_primitives::SpecId;
+use revm_primitives::{Bytes, SpecId};
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
 
+#[derive(PartialEq, Debug)]
+pub enum FetchedFnResult {
+    Found(EvmCompilerFn),
+    NotFound,
+}
 /// Compiler Worker as an external context.
 ///
 /// External function fetching is optimized by using an LRU Cache.
@@ -16,68 +28,92 @@ pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new()
 /// so the cache helps reduce disk I/O cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
-    compile_worker: Box<CompileWorker>,
-    pub cache: LruCache<B256, (EvmCompilerFn, libloading::Library)>,
+    compile_worker: CompileWorker,
+    pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
 }
 
 impl EXTCompileWorker {
-    pub fn new(
-        threshold: u64,
-        max_concurrent_tasks: usize,
-        cache_size_words: usize
-    ) -> Arc<Mutex<Self>> {
+    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
-        let compiler = CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
+        let compile_worker =
+            CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
-        Arc::new(
-            Mutex::new(Self {
-                compile_worker: Box::new(compiler),
-                cache: LruCache::new(NonZeroUsize::new(cache_size_words).unwrap()),
-            })
-        )
+        Self {
+            compile_worker,
+            cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
+        }
     }
 
-    pub fn get_function(&mut self, code_hash: B256) -> Result<Option<EvmCompilerFn>, ExtError> {
+    /// Fetches the compiled function from disk, if exists
+    ///
+    /// Does not utilize EXT for Address Zero
+    /// When parallel compilation is in progress for the same code_hash,
+    /// it resumes without utilizing the cached ExternalFn
+    pub fn get_function(&self, code_hash: B256) -> Result<FetchedFnResult, ExtError> {
         if code_hash.is_zero() {
-            return Ok(None);
+            return Ok(FetchedFnResult::NotFound);
         }
 
-        if let Some((f, _)) = self.cache.get(&code_hash) {
-            return Ok(Some(*f));
+        // Counter-intuitively, Write locks are required for reading from LRU Cache
+        {
+            let mut acq = true;
+
+            let cache = match self.cache.try_write() {
+                Ok(c) => Some(c),
+                Err(err) => match err {
+                    /* in this case, read from file instead of cache */
+                    TryLockError::WouldBlock => {
+                        acq = false;
+                        None
+                    }
+                    TryLockError::Poisoned(err) => Some(err.into_inner()),
+                },
+            };
+
+            if acq {
+                if let Some((f, _)) = cache.unwrap().get(&code_hash) {
+                    return Ok(FetchedFnResult::Found(*f));
+                }
+            }
         }
 
         let so_file = aot_store_path().join(code_hash.to_string()).join("a.so");
         let exist: bool = so_file.try_exists().unwrap_or(false);
         if exist {
             {
-                let lib = (unsafe { libloading::Library::new(&so_file) }).map_err(
-                    |err| ExtError::LibLoadingError { err: err.to_string() }
-                )?;
+                let lib = (unsafe { libloading::Library::new(&so_file) })
+                    .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
+
                 let f: EvmCompilerFn = unsafe {
-                    *lib
-                        .get(code_hash.to_string().as_ref())
+                    *lib.get(code_hash.to_string().as_ref())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
-                // The function holds a reference to the library, so dropping the library will cause an error.
-                // Therefore, the library must also be stored in the cache.
-                self.cache.put(code_hash, (f, lib));
 
-                if let Some((f, _)) = self.cache.get(&code_hash) {
-                    return Ok(Some(*f));
-                } else {
-                    return Err(ExtError::LruCacheGetError);
-                };
+                let mut cache = self
+                    .cache
+                    .write()
+                    .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
+                cache.put(code_hash, (f, lib));
+
+                return Ok(FetchedFnResult::Found(f));
             }
         }
 
-        Ok(None)
+        Ok(FetchedFnResult::NotFound)
     }
 
-    pub fn work(&mut self, spec_id: SpecId, code_hash: B256, bytecode: revm::primitives::Bytes) {
+    /// Stars compile routine JIT-ing the code referred by code_hash
+    pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
         self.compile_worker.work(spec_id, code_hash, bytecode);
+
+        Ok(())
     }
 
-    pub fn preload_cache(&mut self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
+    /// Preloads cache upfront for the specified code hashes
+    ///
+    /// Intended to improve runtime performance by
+    /// reducing the overhead for fetching ExternalFn
+    pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
         for code_hash in code_hashes.into_iter() {
             self.get_function(code_hash)?;
         }

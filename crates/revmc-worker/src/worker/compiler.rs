@@ -1,8 +1,7 @@
 use alloy_primitives::B256;
-use revmc::{primitives::Bytes, primitives::SpecId};
+use revmc::primitives::{Bytes, SpecId};
 use std::sync::{Arc, RwLock};
-use tokio::sync::Semaphore;
-use tokio::task::JoinHandle;
+use tokio::{sync::Semaphore, task::JoinHandle};
 
 use super::{
     aot::{AotCfg, AotRuntime},
@@ -28,7 +27,8 @@ impl CompileWorker {
     ///
     /// # Arguments
     ///
-    /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is compiled.
+    /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is
+    ///   compiled.
     /// * `sled_db` - A reference-counted, thread-safe handle to the sled database.
     /// * `max_concurrent_tasks` - The maximum number of concurrent tasks allowed.
     pub(crate) fn new(
@@ -51,12 +51,7 @@ impl CompileWorker {
     /// * `spec_id` - The specification ID for the EVM.
     /// * `code_hash` - The hash of the bytecode to be compiled.
     /// * `bytecode` - The bytecode to be compiled.
-    pub(crate) fn work(
-        &mut self,
-        spec_id: SpecId,
-        code_hash: B256,
-        bytecode: Bytes,
-    ) -> JoinHandle<()> {
+    pub(crate) fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> JoinHandle<()> {
         // Read the current count of the bytecode hash from the embedded database
         let count = {
             let db_read = match self.sled_db.read() {
@@ -74,6 +69,7 @@ impl CompileWorker {
         let semaphore = Arc::clone(&self.semaphore);
 
         let runtime = get_runtime();
+
         runtime.spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
             // Check if the bytecode is all zeros
@@ -85,10 +81,12 @@ impl CompileWorker {
                 // Compile the bytecode
                 match aot_runtime.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
-                        tracing::info!("Compiled: bytecode hash {}", code_hash);
+                        tracing::info!("Compiled: bytecode hash {code_hash}");
                     }
                     Err(err) => {
-                        tracing::error!("Compile: with bytecode hash {} {:#?}", code_hash, err);
+                        tracing::error!(
+                            "Failed to Compile: with bytecode hash {code_hash} {err:#?}"
+                        );
                         return;
                     }
                 }

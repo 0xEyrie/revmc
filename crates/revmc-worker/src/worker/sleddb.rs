@@ -1,11 +1,10 @@
 use color_eyre::{self, Result};
 use sled::IVec;
-use std::marker::PhantomData;
-use std::path::Path;
-use std::sync::Arc;
+use std::{marker::PhantomData, path::Path, sync::Arc};
 
 use super::path::sleddb_path;
 
+/// Embedded Database for local storage of compiled multiple ExternalFns
 #[derive(Debug)]
 pub(crate) struct SledDB<K>
 where

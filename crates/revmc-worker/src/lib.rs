@@ -2,6 +2,8 @@
 pub mod error;
 mod external;
 mod handler;
+#[cfg(test)]
+mod tests;
 mod worker;
 
 pub use external::*;
