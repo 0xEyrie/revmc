@@ -7,7 +7,7 @@ use revm::{
     },
 };
 use revmc_worker::{register_handler, EXTCompileWorker};
-use std::thread;
+use std::{sync::Arc, thread};
 
 pub const FIBONACCI_CODE: &[u8] =
     &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
@@ -20,7 +20,7 @@ pub const FIBONACCI_CODE: &[u8] =
 /// Second call loads the ExternalFn from embedded db to cache
 /// and executes transaction with it
 fn main() {
-    let ext_worker = EXTCompileWorker::new(1, 3, 128);
+    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
 
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()

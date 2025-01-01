@@ -5,7 +5,7 @@ use std::{
 
 use revm::{handler::register::EvmHandler, Database};
 
-use crate::{EXTCompileWorker, FetchResult};
+use crate::{EXTCompileWorker, FetchedFnResult};
 
 // Register handler for external context to support background compile worker in node runtime
 pub fn register_handler<DB: Database + 'static>(
@@ -18,7 +18,7 @@ pub fn register_handler<DB: Database + 'static>(
         let spec_id = context.evm.inner.spec_id();
 
         match context.external.get_function(code_hash) {
-            Ok(FetchResult::NotFound) => {
+            Ok(FetchedFnResult::NotFound) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
                 if let Err(err) =
@@ -29,7 +29,7 @@ pub fn register_handler<DB: Database + 'static>(
                 prev(frame, memory, tables, context)
             }
 
-            Ok(FetchResult::Found(f)) => {
+            Ok(FetchedFnResult::Found(f)) => {
                 let res = catch_unwind(AssertUnwindSafe(|| unsafe {
                     f.call_with_interpreter_and_memory(interpreter, memory, context)
                 }));

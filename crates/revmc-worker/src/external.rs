@@ -17,7 +17,7 @@ use revmc::EvmCompilerFn;
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
 
 #[derive(PartialEq, Debug)]
-pub enum FetchResult {
+pub enum FetchedFnResult {
     Found(EvmCompilerFn),
     NotFound,
 }
@@ -33,15 +33,15 @@ pub struct EXTCompileWorker {
 }
 
 impl EXTCompileWorker {
-    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Arc<Self> {
+    pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
         let compile_worker =
             CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
 
-        Arc::new(Self {
+        Self {
             compile_worker,
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
-        })
+        }
     }
 
     /// Fetches the compiled function from disk, if exists
@@ -49,24 +49,31 @@ impl EXTCompileWorker {
     /// Does not utilize EXT for Address Zero
     /// When parallel compilation is in progress for the same code_hash,
     /// it resumes without utilizing the cached ExternalFn
-    pub fn get_function(&self, code_hash: B256) -> Result<FetchResult, ExtError> {
+    pub fn get_function(&self, code_hash: B256) -> Result<FetchedFnResult, ExtError> {
         if code_hash.is_zero() {
-            return Ok(FetchResult::NotFound);
+            return Ok(FetchedFnResult::NotFound);
         }
 
         // Counter-intuitively, Write locks are required for reading from LRU Cache
         {
+            let mut acq = true;
+
             let cache = match self.cache.try_write() {
                 Ok(c) => Some(c),
                 Err(err) => match err {
                     /* in this case, read from file instead of cache */
-                    TryLockError::WouldBlock => None,
+                    TryLockError::WouldBlock => {
+                        acq = false;
+                        None
+                    }
                     TryLockError::Poisoned(err) => Some(err.into_inner()),
                 },
             };
 
-            if let Some((f, _)) = cache.unwrap().get(&code_hash) {
-                return Ok(FetchResult::Found(*f));
+            if acq {
+                if let Some((f, _)) = cache.unwrap().get(&code_hash) {
+                    return Ok(FetchedFnResult::Found(*f));
+                }
             }
         }
 
@@ -88,11 +95,11 @@ impl EXTCompileWorker {
                     .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
                 cache.put(code_hash, (f, lib));
 
-                return Ok(FetchResult::Found(f));
+                return Ok(FetchedFnResult::Found(f));
             }
         }
 
-        Ok(FetchResult::NotFound)
+        Ok(FetchedFnResult::NotFound)
     }
 
     /// Stars compile routine JIT-ing the code referred by code_hash
