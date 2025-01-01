@@ -1,12 +1,9 @@
-use alloy_primitives::{address, Keccak256, Uint};
+use alloy_primitives::{address, Keccak256};
 use revm::{
     db::{CacheDB, EmptyDB},
     Evm,
 };
-use revm_primitives::{
-    hex::FromHex, AccessList, AccessListItem, AccountInfo, BlockEnv, Bytecode, Bytes, TxEnv,
-    TxKind, B256,
-};
+use revm_primitives::{AccessList, AccessListItem, AccountInfo, Bytecode, Bytes, TxKind, B256};
 use std::{sync::Arc, thread};
 
 use crate::{register_handler, EXTCompileWorker, FetchedFnResult};
