@@ -1,5 +1,5 @@
 [package]
-name = "revmc-examples-worker"
+name = "revmc-benchmark-erc20"
 publish = false
 
 version.workspace = true
@@ -15,5 +15,8 @@ exclude.workspace = true
 [dependencies]
 revmc = { workspace = true, features = ["llvm-prefer-dynamic"] }
 revmc-worker.workspace = true
-
 revm = { workspace = true, default-features = false }
+
+[[bin]]
+name = "benchmark-erc20"
+path = "src/main.rs"
