@@ -2,9 +2,11 @@
 pub mod error;
 mod external;
 mod handler;
+mod worker;
 #[cfg(test)]
 mod tests;
-mod worker;
+#[cfg(debug_assertions)]
+mod debug;
 
 pub use external::*;
 pub use handler::*;

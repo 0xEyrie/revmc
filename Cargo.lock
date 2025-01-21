@@ -2218,6 +2218,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "revmc-benchmark-erc20"
+version = "0.1.0"
+dependencies = [
+ "revm",
+ "revmc",
+ "revmc-worker",
+]
+
+[[package]]
+name = "revmc-benchmark-fib"
+version = "0.1.0"
+dependencies = [
+ "revm",
+ "revmc",
+ "revmc-worker",
+]
+
+[[package]]
 name = "revmc-build"
 version = "0.1.0"
 
@@ -2299,15 +2317,6 @@ dependencies = [
  "revmc-build",
  "revmc-builtins",
  "revmc-context",
-]
-
-[[package]]
-name = "revmc-examples-worker"
-version = "0.1.0"
-dependencies = [
- "revm",
- "revmc",
- "revmc-worker",
 ]
 
 [[package]]

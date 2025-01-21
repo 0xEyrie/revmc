@@ -1,15 +1,12 @@
-use std::{
-    panic::{catch_unwind, AssertUnwindSafe},
-    sync::Arc,
-};
+use std::{ panic::{ catch_unwind, AssertUnwindSafe }, sync::Arc };
 
-use revm::{handler::register::EvmHandler, Database};
+use revm::{ handler::register::EvmHandler, Database };
 
-use crate::{EXTCompileWorker, FetchedFnResult};
+use crate::{ debug::log, EXTCompileWorker, FetchedFnResult };
 
 // Register handler for external context to support background compile worker in node runtime
 pub fn register_handler<DB: Database + 'static>(
-    handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>,
+    handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>
 ) {
     let prev = handler.execution.execute_frame.clone();
     handler.execution.execute_frame = Arc::new(move |frame, memory, tables, context| {
@@ -19,10 +16,15 @@ pub fn register_handler<DB: Database + 'static>(
 
         match context.external.get_function(code_hash) {
             Ok(FetchedFnResult::NotFound) => {
+                log("Executed by Evm Interpreter");
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
-                if let Err(err) =
-                    context.external.work(spec_id, code_hash, bytecode.original_bytes())
+                if
+                    let Err(err) = context.external.work(
+                        spec_id,
+                        code_hash,
+                        bytecode.original_bytes()
+                    )
                 {
                     tracing::error!("Worker failed: with bytecode hash {}: {:#?}", code_hash, err);
                 }
@@ -30,9 +32,11 @@ pub fn register_handler<DB: Database + 'static>(
             }
 
             Ok(FetchedFnResult::Found(f)) => {
-                let res = catch_unwind(AssertUnwindSafe(|| unsafe {
-                    f.call_with_interpreter_and_memory(interpreter, memory, context)
-                }));
+                let res = catch_unwind(
+                    AssertUnwindSafe(|| unsafe {
+                        f.call_with_interpreter_and_memory(interpreter, memory, context)
+                    })
+                );
 
                 if let Err(err) = &res {
                     tracing::error!(
