@@ -5,6 +5,7 @@ use revm_primitives::{Bytes, SpecId, B256};
 use revmc::{EvmCompiler, OptimizationLevel};
 use revmc_llvm::EvmLlvmBackend;
 
+/// Runtime entity responsible for aot-compiling in the background.
 #[derive(Debug)]
 pub(crate) struct AotRuntime {
     pub cfg: AotCfg,
@@ -15,6 +16,7 @@ impl AotRuntime {
         Self { cfg }
     }
 
+    /// Aot compiles locally
     pub(crate) fn compile(
         &self,
         code_hash: B256,
@@ -77,6 +79,7 @@ impl AotRuntime {
     }
 }
 
+// Extra configurations are available in revmc-cli
 #[derive(Debug)]
 pub(crate) struct AotCfg {
     pub aot: bool,
