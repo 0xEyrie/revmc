@@ -1,17 +1,10 @@
-use std::{
-    fmt::Debug,
-    num::NonZeroUsize,
-    sync::{Arc, RwLock, TryLockError},
-};
+use std::{ fmt::Debug, num::NonZeroUsize, sync::{ Arc, RwLock, TryLockError } };
 
-use crate::{
-    error::ExtError,
-    worker::{aot_store_path, CompileWorker, SledDB},
-};
+use crate::{ error::ExtError, worker::{ store_path, CompileWorker, SledDB } };
 use alloy_primitives::B256;
 use lru::LruCache;
 use once_cell::sync::OnceCell;
-use revm_primitives::{Bytes, SpecId};
+use revm_primitives::{ Bytes, SpecId };
 use revmc::EvmCompilerFn;
 
 pub(crate) static SLED_DB: OnceCell<Arc<RwLock<SledDB<B256>>>> = OnceCell::new();
@@ -25,7 +18,7 @@ pub enum FetchedFnResult {
 ///
 /// External function fetching is optimized by using an LRU Cache.
 /// In many cases, a contract that is called will likely be called again,
-/// so the cache helps reduce disk I/O cost.
+/// so the cache helps reduce library loading cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
     compile_worker: CompileWorker,
@@ -35,8 +28,11 @@ pub struct EXTCompileWorker {
 impl EXTCompileWorker {
     pub fn new(threshold: u64, max_concurrent_tasks: usize, cache_size_words: usize) -> Self {
         let sled_db = SLED_DB.get_or_init(|| Arc::new(RwLock::new(SledDB::init())));
-        let compile_worker =
-            CompileWorker::new(threshold, Arc::clone(sled_db), max_concurrent_tasks);
+        let compile_worker = CompileWorker::new(
+            threshold,
+            Arc::clone(sled_db),
+            max_concurrent_tasks
+        );
 
         Self {
             compile_worker,
@@ -45,29 +41,26 @@ impl EXTCompileWorker {
     }
 
     /// Fetches the compiled function from disk, if exists
-    ///
-    /// Does not utilize EXT for Address Zero
-    /// When parallel compilation is in progress for the same code_hash,
-    /// it resumes without utilizing the cached ExternalFn
     pub fn get_function(&self, code_hash: B256) -> Result<FetchedFnResult, ExtError> {
         if code_hash.is_zero() {
             return Ok(FetchedFnResult::NotFound);
         }
 
-        // Counter-intuitively, Write locks are required for reading from LRU Cache
+        // Write locks are required for reading from LRU Cache
         {
             let mut acq = true;
 
             let cache = match self.cache.try_write() {
                 Ok(c) => Some(c),
-                Err(err) => match err {
-                    /* in this case, read from file instead of cache */
-                    TryLockError::WouldBlock => {
-                        acq = false;
-                        None
+                Err(err) =>
+                    match err {
+                        /* in this case, read from file instead of cache */
+                        TryLockError::WouldBlock => {
+                            acq = false;
+                            None
+                        }
+                        TryLockError::Poisoned(err) => Some(err.into_inner()),
                     }
-                    TryLockError::Poisoned(err) => Some(err.into_inner()),
-                },
             };
 
             if acq {
@@ -77,20 +70,20 @@ impl EXTCompileWorker {
             }
         }
 
-        let so_file = aot_store_path().join(code_hash.to_string()).join("a.so");
-        let exist: bool = so_file.try_exists().unwrap_or(false);
-        if exist {
+        let so_file_path = store_path().join(code_hash.to_string()).join("a.so");
+        if so_file_path.try_exists().unwrap_or(false) {
             {
-                let lib = (unsafe { libloading::Library::new(&so_file) })
-                    .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
+                let lib = (unsafe { libloading::Library::new(&so_file_path) }).map_err(
+                    |err| ExtError::LibLoadingError { err: err.to_string() }
+                )?;
 
                 let f: EvmCompilerFn = unsafe {
-                    *lib.get(code_hash.to_string().as_ref())
+                    *lib
+                        .get(code_hash.to_string().as_ref())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
-                let mut cache = self
-                    .cache
+                let mut cache = self.cache
                     .write()
                     .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
                 cache.put(code_hash, (f, lib));
@@ -102,7 +95,7 @@ impl EXTCompileWorker {
         Ok(FetchedFnResult::NotFound)
     }
 
-    /// Stars compile routine JIT-ing the code referred by code_hash
+    /// Starts compile routine JIT-ing the code referred by code_hash
     pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
         self.compile_worker.work(spec_id, code_hash, bytecode);
 
@@ -111,8 +104,9 @@ impl EXTCompileWorker {
 
     /// Preloads cache upfront for the specified code hashes
     ///
-    /// Intended to improve runtime performance by
-    /// reducing the overhead for fetching ExternalFn
+    /// Improve runtime performance by reducing the overhead for library loading
+    /// Available when the corresponding code hash is called definitively
+    /// ex. AccesslistType Transaction (tx type: 2, 3)
     pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
         for code_hash in code_hashes.into_iter() {
             self.get_function(code_hash)?;

@@ -13,7 +13,7 @@ pub const FIBONACCI_CODE: &[u8] =
     &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
 
 /// First call executes the transaction and compiles into embedded db
-/// embedded db: ~/.aotstore/db, ~/.aotstore/output
+/// embedded db: ~/.revmc/db, ~/.revmc/output
 /// It is crucial to reset the embedded db and do 'cargo clean' for reproducing the same steps
 /// Otherwise, both calls will utilize cached ExternalFn or unexpected behavior will happen
 ///

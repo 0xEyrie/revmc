@@ -1,13 +1,9 @@
 use alloy_primitives::B256;
-use revmc::primitives::{Bytes, SpecId};
-use std::sync::{Arc, RwLock};
-use tokio::{sync::Semaphore, task::JoinHandle};
+use revmc::primitives::{ Bytes, SpecId };
+use std::sync::{ Arc, RwLock };
+use tokio::{ sync::Semaphore, task::JoinHandle };
 
-use super::{
-    aot::{AotCfg, AotRuntime},
-    runtime::get_runtime,
-    sleddb::SledDB,
-};
+use super::{ runtime::{ JitConfig, JitRuntime, get_runtime }, sleddb::SledDB };
 
 fn ivec_to_u64(ivec: &sled::IVec) -> Option<u64> {
     ivec.as_ref().try_into().ok().map(u64::from_be_bytes)
@@ -18,7 +14,7 @@ fn ivec_to_u64(ivec: &sled::IVec) -> Option<u64> {
 pub struct CompileWorker {
     pub threshold: u64,
     sled_db: Arc<RwLock<SledDB<B256>>>,
-    aot_runtime: Arc<AotRuntime>,
+    jit_runtime: Arc<JitRuntime>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -30,16 +26,16 @@ impl CompileWorker {
     /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is
     ///   compiled.
     /// * `sled_db` - A reference-counted, thread-safe handle to the sled database.
-    /// * `max_concurrent_tasks` - The maximum number of concurrent tasks allowed.
+    /// * `max_concurrent_tasks` - The maximum number of concurrent jit tasks allowed.
     pub(crate) fn new(
         threshold: u64,
         sled_db: Arc<RwLock<SledDB<B256>>>,
-        max_concurrent_tasks: usize,
+        max_concurrent_tasks: usize
     ) -> Self {
         Self {
             threshold,
             sled_db,
-            aot_runtime: Arc::new(AotRuntime::new(AotCfg::default())),
+            jit_runtime: Arc::new(JitRuntime::new(JitConfig::default())),
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
         }
     }
@@ -64,7 +60,7 @@ impl CompileWorker {
         let new_count = count + 1;
 
         let sled_db = Arc::clone(&self.sled_db);
-        let aot_runtime = self.aot_runtime.clone();
+        let rt = self.jit_runtime.clone();
         let threshold = self.threshold;
         let semaphore = Arc::clone(&self.semaphore);
 
@@ -79,7 +75,7 @@ impl CompileWorker {
             // Check if the bytecode should be compiled
             if new_count == threshold {
                 // Compile the bytecode
-                match aot_runtime.compile(code_hash, bytecode, spec_id) {
+                match rt.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
                         tracing::info!("Compiled: bytecode hash {code_hash}");
                     }

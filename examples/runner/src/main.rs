@@ -26,7 +26,6 @@ fn main() {
     evm.context.evm.env.tx.transact_to = TransactTo::Call(fibonacci_address);
     evm.context.evm.env.tx.data = actual_num.to_be_bytes_vec().into();
     let result = evm.transact().unwrap();
-    // eprintln!("{:#?}", result.result);
 
     println!("fib({num}) = {}", U256::from_be_slice(result.result.output().unwrap()));
 }
