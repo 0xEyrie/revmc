@@ -1,6 +1,6 @@
-mod runtime;
 mod compiler;
 mod path;
+mod runtime;
 mod sleddb;
 
 pub use compiler::*;
