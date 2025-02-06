@@ -1,8 +1,8 @@
 use super::path::store_path;
 use crate::error::CompilerError;
 
-use revm_primitives::{ Bytes, SpecId, B256 };
-use revmc::{ EvmCompiler, OptimizationLevel };
+use revm_primitives::{Bytes, SpecId, B256};
+use revmc::{EvmCompiler, OptimizationLevel};
 use revmc_llvm::EvmLlvmBackend;
 use std::sync::Once;
 use tokio::runtime::Runtime;
@@ -10,6 +10,8 @@ use tokio::runtime::Runtime;
 static mut RUNTIME: Option<Runtime> = None;
 static INIT: Once = Once::new();
 
+/// Makes sure only a single runtime thread is alive throughout the program lifetime
+/// This is critical especially in the case of using revmc-worker throughout FFI
 #[allow(static_mut_refs)]
 pub(crate) fn get_runtime() -> &'static Runtime {
     unsafe {
@@ -20,10 +22,12 @@ pub(crate) fn get_runtime() -> &'static Runtime {
     }
 }
 
+/// Jit configuration flags
+/// Extra configurations are available in revmc-cli
 #[derive(Debug)]
 pub(crate) struct JitConfig {
-    pub jit: bool,
     pub opt_level: OptimizationLevel,
+    pub jit: bool,
     pub no_gas: bool,
     pub no_len_checks: bool,
     pub debug_assertions: bool,
@@ -51,11 +55,12 @@ impl JitRuntime {
         Self { cfg }
     }
 
+    /// Aot compiles locally
     pub(crate) fn compile(
         &self,
         code_hash: B256,
         bytecode: Bytes,
-        spec_id: SpecId
+        spec_id: SpecId,
     ) -> Result<(), CompilerError> {
         let _ = color_eyre::install();
 
@@ -64,14 +69,14 @@ impl JitRuntime {
             &context,
             self.cfg.jit,
             self.cfg.opt_level,
-            &revmc_backend::Target::Native
-        ).map_err(|err| CompilerError::BackendInit { err: err.to_string() })?;
+            &revmc_backend::Target::Native,
+        )
+        .map_err(|err| CompilerError::BackendInit { err: err.to_string() })?;
 
         let mut compiler = EvmCompiler::new(backend);
 
         let out_dir = store_path();
-        std::fs
-            ::create_dir_all(&out_dir)
+        std::fs::create_dir_all(&out_dir)
             .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
 
         compiler.set_dump_to(Some(out_dir.clone()));
@@ -93,8 +98,7 @@ impl JitRuntime {
             .map_err(|err| CompilerError::BytecodeTranslation { err: err.to_string() })?;
 
         let module_out_dir = out_dir.join(&name);
-        std::fs
-            ::create_dir_all(&module_out_dir)
+        std::fs::create_dir_all(&module_out_dir)
             .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
 
         // Compile.

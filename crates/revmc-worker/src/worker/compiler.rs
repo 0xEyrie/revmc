@@ -1,9 +1,12 @@
 use alloy_primitives::B256;
-use revmc::primitives::{ Bytes, SpecId };
-use std::sync::{ Arc, RwLock };
-use tokio::{ sync::Semaphore, task::JoinHandle };
+use revmc::primitives::{Bytes, SpecId};
+use std::sync::{Arc, RwLock};
+use tokio::{sync::Semaphore, task::JoinHandle};
 
-use super::{ runtime::{ JitConfig, JitRuntime, get_runtime }, sleddb::SledDB };
+use super::{
+    runtime::{get_runtime, JitConfig, JitRuntime},
+    sleddb::SledDB,
+};
 
 fn ivec_to_u64(ivec: &sled::IVec) -> Option<u64> {
     ivec.as_ref().try_into().ok().map(u64::from_be_bytes)
@@ -30,7 +33,7 @@ impl CompileWorker {
     pub(crate) fn new(
         threshold: u64,
         sled_db: Arc<RwLock<SledDB<B256>>>,
-        max_concurrent_tasks: usize
+        max_concurrent_tasks: usize,
     ) -> Self {
         Self {
             threshold,
