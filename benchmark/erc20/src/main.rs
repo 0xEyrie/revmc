@@ -115,7 +115,7 @@ fn erc20_with_aot_compiler() {
 /// Second call loads the ExternalFn from embedded db to cache
 /// and executes transaction with it
 fn main() {
-    println!("Call ERC20 Contract");
+    println!("Call ERC20 Contract With Interpreter");
     erc20();
 
     println!("Call ERC20 Contract With AOT Compiler");
