@@ -120,4 +120,8 @@ fn main() {
 
     println!("Call ERC20 Contract With AOT Compiler");
     erc20_with_aot_compiler();
+
+    std::thread::sleep(Duration::from_secs(3));
+    println!("Call ERC20 Contract With AOT Compiler");
+    erc20_with_aot_compiler();
 }
