@@ -2,8 +2,8 @@
 mod compiler;
 mod path;
 mod runtime;
-mod sleddb;
+mod hotcode;
 
 pub use compiler::*;
 pub(crate) use path::*;
-pub(crate) use sleddb::*;
+pub(crate) use hotcode::*;

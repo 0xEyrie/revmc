@@ -14,8 +14,8 @@ pub(crate) fn store_path() -> PathBuf {
     default_path().join("output")
 }
 
-/// Returns the path to the sled database directory.
+/// Returns the path of the database.
 #[inline]
-pub(crate) fn sleddb_path() -> PathBuf {
+pub(crate) fn db_path() -> PathBuf {
     default_path().join("db")
 }

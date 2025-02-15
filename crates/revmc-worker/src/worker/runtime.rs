@@ -55,7 +55,7 @@ impl JitRuntime {
         Self { cfg }
     }
 
-    /// Aot compiles locally
+    /// Compile Just in Time
     pub(crate) fn compile(
         &self,
         code_hash: B256,
