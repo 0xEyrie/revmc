@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 mod compiler;
 pub mod ext;
 
