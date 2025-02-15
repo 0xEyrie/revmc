@@ -1,12 +1,12 @@
 use revm_primitives::B256;
-use rocksdb::{ DB, Options, Error };
+use rocksdb::{Error, Options, DB};
+use std::{sync::Mutex, thread};
 use tokio::time;
-use std::{ sync::Mutex, thread };
 
 use super::db_path;
 
 /// Embedded Database to support below features
-/// Use RocksDB to support multi-process and multi-thread
+/// Use RocksDB to support multi-thread (not mult-process)
 /// 1. Count the call of contracts to find hot contract code
 /// 2. Save the path of machincode result to load
 #[derive(Debug)]
@@ -29,7 +29,7 @@ impl HotCodeCounter {
                 Ok(database) => {
                     db = Some(database);
                 }
-                Err(e) => {
+                Err(_) => {
                     thread::sleep(time::Duration::from_secs(2));
                 }
             }
@@ -42,10 +42,8 @@ impl HotCodeCounter {
         let db = self.0.lock().unwrap();
         match db.get(code_hash) {
             Ok(Some(count)) => {
-                let count: [u8; 8] = count
-                    .as_slice()
-                    .try_into()
-                    .expect("slice with incorrect length");
+                let count: [u8; 8] =
+                    count.as_slice().try_into().expect("slice with incorrect length");
                 Ok(u64::from_be_bytes(count))
             }
             Ok(None) => Ok(0),

@@ -89,7 +89,12 @@ impl EXTCompileWorker {
     }
 
     /// Starts compile routine JIT-ing the code referred by code_hash
-    pub fn work(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
+    pub fn spwan_compilation(
+        &self,
+        spec_id: SpecId,
+        code_hash: B256,
+        bytecode: Bytes
+    ) -> Result<(), ExtError> {
         self.compile_worker.spwan_compilation(spec_id, code_hash, bytecode);
 
         Ok(())

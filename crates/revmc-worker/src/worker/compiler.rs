@@ -1,9 +1,12 @@
+use super::{
+    hotcode::HotCodeCounter,
+    runtime::{get_runtime, JitConfig, JitRuntime},
+};
 use alloy_primitives::B256;
-use revmc::primitives::{ Bytes, SpecId };
-use std::sync::Arc;
-use tokio::{ sync::Semaphore, task::JoinHandle };
+use revmc::primitives::{Bytes, SpecId};
 use rocksdb::Error;
-use super::{ hotcode::HotCodeCounter, runtime::{ get_runtime, JitConfig, JitRuntime } };
+use std::sync::Arc;
+use tokio::{sync::Semaphore, task::JoinHandle};
 
 /// A worker responsible for compiling bytecode in machine code.
 #[derive(Debug)]
@@ -26,7 +29,7 @@ impl CompileWorker {
     pub(crate) fn new(
         threshold: u64,
         hot_code_counter: HotCodeCounter,
-        max_concurrent_tasks: usize
+        max_concurrent_tasks: usize,
     ) -> Self {
         Self {
             threshold,
@@ -46,12 +49,13 @@ impl CompileWorker {
     ///
     /// # Returns
     ///
-    /// A `JoinHandle` to the spawned task, which resolves to a `Result` indicating success or failure.
+    /// A `JoinHandle` to the spawned task, which resolves to a `Result` indicating success or
+    /// failure.
     pub(crate) fn spwan_compilation(
         &self,
         spec_id: SpecId,
         code_hash: B256,
-        bytecode: Bytes
+        bytecode: Bytes,
     ) -> JoinHandle<Result<(), Error>> {
         let threshold = self.threshold;
         let semaphore = self.semaphore.clone();
