@@ -19,7 +19,6 @@ impl HotCodeCounter {
         opts.increase_parallelism(worker_pool_size as i32);
         opts.set_max_background_jobs(worker_pool_size as i32);
         opts.set_max_write_buffer_number(worker_pool_size as i32);
-        opts.set_max_background_jobs(4);
         opts.set_max_open_files(1000);
         let db_path = db_path();
         let path = db_path.to_str().unwrap();
@@ -31,11 +30,7 @@ impl HotCodeCounter {
                     db = Some(database);
                 }
                 Err(e) => {
-                    if e.to_string().contains("lock hold") {
-                        thread::sleep(time::Duration::from_secs(2));
-                    } else {
-                        panic!("Failed to open DB: {e:?}");
-                    }
+                    thread::sleep(time::Duration::from_secs(2));
                 }
             }
         }

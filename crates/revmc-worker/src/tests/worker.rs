@@ -1,12 +1,9 @@
-use alloy_primitives::{address, Keccak256};
-use revm::{
-    db::{CacheDB, EmptyDB},
-    Evm,
-};
-use revm_primitives::{AccessList, AccessListItem, AccountInfo, Bytecode, Bytes, TxKind, B256};
-use std::{sync::Arc, thread};
+use alloy_primitives::{ address, Keccak256 };
+use revm::{ db::{ CacheDB, EmptyDB }, Evm };
+use revm_primitives::{ AccessList, AccessListItem, AccountInfo, Bytecode, Bytes, TxKind, B256 };
+use std::{ sync::Arc, thread };
 
-use crate::{register_handler, EXTCompileWorker, FetchedFnResult};
+use crate::{ register_handler, EXTCompileWorker, FetchedFnResult };
 
 fn setup_test_cache(ext_worker: &Arc<EXTCompileWorker>, bytecode: &Bytecode) {
     let code_hash = bytecode.hash_slow();
@@ -71,24 +68,30 @@ fn test_compiler_cache_load_access_list() {
     let code = Some(fib_bytecode);
     // Manually insert account info for deployed contract
     // Not necessary in practice
-    evm.db_mut().insert_account_info(
-        deployed_address,
-        AccountInfo { code_hash, code, ..Default::default() },
-    );
+    evm.db_mut().insert_account_info(deployed_address, AccountInfo {
+        code_hash,
+        code,
+        ..Default::default()
+    });
 
-    assert!(ext_worker.preload_cache(vec![code_hash]).is_ok(), "Failed to Preload Cache");
+    assert!(
+        ext_worker.preload_cache(unsafe { vec![code_hash] }).is_ok(),
+        "Failed to Preload Cache"
+    );
     thread::sleep(std::time::Duration::from_secs(2));
     {
         let mut cache = ext_worker.cache.write().unwrap();
         assert!(cache.get(&code_hash).is_some(), "Failed to Update Cache");
     }
-
+    let mut access_list: Vec<AccessListItem> = Vec::new();
+    access_list.push(AccessListItem {
+        address: deployed_address,
+        storage_keys: unsafe {
+            vec![B256::ZERO]
+        },
+    });
     evm.context.evm.inner.env.tx.transact_to = TxKind::Call(deployed_address);
     evm.context.evm.inner.env.tx.data = fib_call_data();
-    evm.context.evm.inner.env.tx.access_list = AccessList(vec![AccessListItem {
-        address: deployed_address,
-        storage_keys: vec![B256::ZERO],
-    }])
-    .to_vec();
+    evm.context.evm.inner.env.tx.access_list = AccessList(vec![]).to_vec();
     assert!(evm.transact().is_ok(), "Failed to Transact Evm");
 }
