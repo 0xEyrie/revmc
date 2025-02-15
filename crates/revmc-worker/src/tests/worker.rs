@@ -79,8 +79,7 @@ fn test_compiler_cache_load_access_list() {
     assert!(ext_worker.preload_cache(vec![code_hash]).is_ok(), "Failed to Preload Cache");
     thread::sleep(std::time::Duration::from_secs(2));
     {
-        let worker = ext_worker.clone();
-        let mut cache = worker.cache.write().unwrap();
+        let mut cache = ext_worker.cache.write().unwrap();
         assert!(cache.get(&code_hash).is_some(), "Failed to Update Cache");
     }
 
