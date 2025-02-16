@@ -51,7 +51,7 @@ impl CompileWorker {
     ///
     /// A `JoinHandle` to the spawned task, which resolves to a `Result` indicating success or
     /// failure.
-    pub(crate) fn spwan_compilation(
+    pub(crate) fn spwan(
         &self,
         spec_id: SpecId,
         code_hash: B256,

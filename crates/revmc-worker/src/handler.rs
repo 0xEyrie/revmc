@@ -17,15 +17,13 @@ pub fn register_handler<DB: Database + 'static>(
         let code_hash = interpreter.contract.hash.unwrap_or_default();
         let spec_id = context.evm.inner.spec_id();
 
-        match context.external.get_function(code_hash) {
+        match context.external.get_function(&code_hash) {
             Ok(FetchedFnResult::NotFound) => {
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
-                if let Err(err) = context.external.spwan_compilation(
-                    spec_id,
-                    code_hash,
-                    bytecode.original_bytes(),
-                ) {
+                if let Err(err) =
+                    context.external.spwan(spec_id, code_hash, bytecode.original_bytes())
+                {
                     tracing::error!("Worker failed: with bytecode hash {}: {:#?}", code_hash, err);
                 }
                 prev(frame, memory, tables, context)

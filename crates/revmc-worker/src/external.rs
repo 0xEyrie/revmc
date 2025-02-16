@@ -41,11 +41,10 @@ impl EXTCompileWorker {
     }
 
     /// Fetches the compiled function from disk, if exists
-    pub fn get_function(&self, code_hash: B256) -> Result<FetchedFnResult, ExtError> {
+    pub fn get_function(&self, code_hash: &B256) -> Result<FetchedFnResult, ExtError> {
         if code_hash.is_zero() {
             return Ok(FetchedFnResult::NotFound);
         }
-
         // Write locks are required for reading from LRU Cache
         {
             let mut acq = true;
@@ -63,12 +62,11 @@ impl EXTCompileWorker {
             };
 
             if acq {
-                if let Some((f, _)) = cache.unwrap().get(&code_hash) {
+                if let Some((f, _)) = cache.unwrap().get(code_hash) {
                     return Ok(FetchedFnResult::Found(*f));
                 }
             }
         }
-
         let so_file_path = store_path().join(code_hash.to_string()).join("a.so");
         if so_file_path.try_exists().unwrap_or(false) {
             {
@@ -84,36 +82,17 @@ impl EXTCompileWorker {
                     .cache
                     .write()
                     .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
-                cache.put(code_hash, (f, lib));
+                cache.put(*code_hash, (f, lib));
 
                 return Ok(FetchedFnResult::Found(f));
             }
         }
-
         Ok(FetchedFnResult::NotFound)
     }
 
     /// Starts compile routine JIT-ing the code referred by code_hash
-    pub fn spwan_compilation(
-        &self,
-        spec_id: SpecId,
-        code_hash: B256,
-        bytecode: Bytes,
-    ) -> Result<(), ExtError> {
-        self.compile_worker.spwan_compilation(spec_id, code_hash, bytecode);
-
-        Ok(())
-    }
-
-    /// Preloads cache upfront for the specified code hashes
-    ///
-    /// Improve runtime performance by reducing the overhead for library loading
-    /// Available when the corresponding code hash is called definitively
-    /// ex. AccesslistType Transaction (tx type: 2, 3)
-    pub fn preload_cache(&self, code_hashes: Vec<B256>) -> Result<(), ExtError> {
-        for code_hash in code_hashes.into_iter() {
-            self.get_function(code_hash)?;
-        }
+    pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
+        self.compile_worker.spwan(spec_id, code_hash, bytecode);
 
         Ok(())
     }

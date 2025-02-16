@@ -2,9 +2,7 @@
 
 use revm::{
     db::{CacheDB, EmptyDB},
-    primitives::{
-        address, hex, AccessList, AccessListItem, AccountInfo, Bytecode, TransactTo, B256, U256,
-    },
+    primitives::{address, hex, AccountInfo, Bytecode, TransactTo, U256},
 };
 use revmc_worker::{register_handler, EXTCompileWorker};
 use std::{sync::Arc, thread};
@@ -21,7 +19,6 @@ pub const FIBONACCI_CODE: &[u8] =
 /// and executes transaction with it
 fn main() {
     let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
-
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()
         .with_db(db)
@@ -43,26 +40,16 @@ fn main() {
         },
     );
 
-    let access_list = AccessList(vec![AccessListItem {
-        address: fibonacci_address,
-        storage_keys: vec![B256::ZERO],
-    }]);
-
     // First call - compiles ExternalFn
     evm.context.evm.env.tx.transact_to = TransactTo::Call(fibonacci_address);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
-    evm.context.evm.inner.env.tx.access_list = access_list.to_vec();
     let mut result = evm.transact().unwrap();
     println!("fib(10) = {}", U256::from_be_slice(result.result.output().unwrap()));
     thread::sleep(std::time::Duration::from_secs(2));
 
-    ext_worker.preload_cache(vec![B256::from(fib_hash)]).unwrap();
-
     // Second call - uses cached ExternalFn
     evm.context.evm.env.tx.transact_to = TransactTo::Call(fibonacci_address);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
-    evm.context.evm.inner.env.tx.access_list = access_list.to_vec();
-
     result = evm.transact().unwrap();
     println!("fib(10) = {}", U256::from_be_slice(result.result.output().unwrap()));
 }
