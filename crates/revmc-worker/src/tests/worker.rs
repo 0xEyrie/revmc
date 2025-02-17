@@ -59,11 +59,11 @@ fn test_worker() {
     }
     // let so_file_path = store_path().join(fib_hash.to_string()).join("a.so");
     // assert!(so_file_path.exists(), "Failed to JIT compile");
-    // // Second call - uses jit-compiled machine code
-    // evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
-    // evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
-    // result = evm.transact().unwrap();
-    // assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+    // Second call - uses jit-compiled machine code
+    evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
+    evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
+    result = evm.transact().unwrap();
+    assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
 
     // // Check code loaded successfully in cache
     // {
