@@ -13,10 +13,10 @@ use crate::{
 const FIBONACCI_CODE: &[u8] =
     &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
 const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000001234");
-type MockEVM<'a> = Evm<'a, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallible>>>;
+type MockEVM = Evm<'static, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallible>>>;
 
 #[inline]
-fn setup_evm() -> (MockEVM<'static>, B256) {
+fn setup_evm() -> (MockEVM, B256) {
     let _g = TestEnvGuard::new();
     let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
     let db = CacheDB::new(EmptyDB::new());
@@ -43,36 +43,37 @@ fn setup_evm() -> (MockEVM<'static>, B256) {
 #[test]
 fn test_worker() {
     let (mut evm, fib_hash) = setup_evm();
+    let code_path = store_path().join(fib_hash.to_string());
+    assert!(!code_path.exists(), "Ensure aot-compiled code doesn't exist");
 
-    // First call - Execute by interpreter and JIT compile Fibonacci code
+    // First call - Execute by interpreter and AOT compile Fibonacci code
     evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     let mut result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
 
-    // Wait for worker to JIT compile code
+    // Wait for worker to AOT compile code
     thread::sleep(std::time::Duration::from_secs(2));
-    // Check JIT compilation was successful
+    // Check AOT compilation was successful
     {
         let result = evm.context.external.get_function(&fib_hash).unwrap();
         assert!(matches!(result, FetchedFnResult::Found(_)));
     }
-    // let so_file_path = store_path().join(fib_hash.to_string()).join("a.so");
-    // assert!(so_file_path.exists(), "Failed to JIT compile");
-    // Second call - uses jit-compiled machine code
+    assert!(code_path.exists(), "Failed to AOT compile");
+    // Second call - uses AOT-compiled machine code
     evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
 
     // // Check code loaded successfully in cache
-    // {
-    //     let mut cache = evm.context.external.cache.write().unwrap();
-    //     assert!(cache.get(&fib_hash).is_some(), "Failed to load in cache");
-    // }
-    // // Third call - uses cached code
-    // evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
-    // evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
-    // result = evm.transact().unwrap();
-    // assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+    {
+        let mut cache = evm.context.external.cache.write().unwrap();
+        assert!(cache.get(&fib_hash).is_some(), "Failed to load in cache");
+    }
+    // Third call - uses cached code
+    evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
+    evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
+    result = evm.transact().unwrap();
+    assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
 }

@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     error::ExtError,
-    worker::{store_path, CompileWorker, HotCodeCounter},
+    worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
 };
 use alloy_primitives::B256;
 use lru::LruCache;
@@ -25,17 +25,18 @@ pub enum FetchedFnResult {
 /// so the cache helps reduce library loading cost.
 #[derive(Debug)]
 pub struct EXTCompileWorker {
-    compile_worker: CompileWorker,
+    worker_pool: AotCompileWorkerPool,
     pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
 }
 
 impl EXTCompileWorker {
     pub fn new(threshold: u64, worker_pool_size: usize, cache_size_words: usize) -> Self {
         let hot_code_counter = HotCodeCounter::new(worker_pool_size);
-        let compile_worker = CompileWorker::new(threshold, hot_code_counter, worker_pool_size);
+        let compile_worker =
+            AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
 
         Self {
-            compile_worker,
+            worker_pool: compile_worker,
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
         }
     }
@@ -73,8 +74,8 @@ impl EXTCompileWorker {
                 let lib = (unsafe { libloading::Library::new(&so_file_path) })
                     .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
 
-                let f: EvmCompilerFn = unsafe {
-                    *lib.get(code_hash.to_string().as_ref())
+                let f = unsafe {
+                    *lib.get(code_hash.to_string().as_bytes())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
@@ -90,9 +91,9 @@ impl EXTCompileWorker {
         Ok(FetchedFnResult::NotFound)
     }
 
-    /// Starts compile routine JIT-ing the code referred by code_hash
+    /// Starts compile routine aot compile the code referred by code_hash
     pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
-        self.compile_worker.spwan(spec_id, code_hash, bytecode);
+        self.worker_pool.spwan(spec_id, code_hash, bytecode);
 
         Ok(())
     }

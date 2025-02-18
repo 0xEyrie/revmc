@@ -1,95 +1,84 @@
-use super::{
-    hotcode::HotCodeCounter,
-    runtime::{get_runtime, JitConfig, JitRuntime},
-};
-use alloy_primitives::B256;
-use revmc::primitives::{Bytes, SpecId};
-use rocksdb::Error;
-use std::sync::Arc;
-use tokio::{sync::Semaphore, task::JoinHandle};
+use super::path::store_path;
+use crate::error::CompilerError;
 
-/// A worker responsible for compiling bytecode in machine code.
+use revm_primitives::{Bytes, SpecId, B256};
+use revmc::{EvmCompiler, OptimizationLevel};
+use revmc_llvm::EvmLlvmBackend;
+
+/// AOT configuration flags
+/// Extra configurations are available in revmc-cli
 #[derive(Debug)]
-pub struct CompileWorker {
-    pub threshold: u64,
-    hot_code_counter: Arc<HotCodeCounter>,
-    jit_runtime: Arc<JitRuntime>,
-    semaphore: Arc<Semaphore>,
+pub(crate) struct AotConfig {
+    pub opt_level: OptimizationLevel,
+    pub no_gas: bool,
+    pub no_len_checks: bool,
 }
 
-impl CompileWorker {
-    /// Creates a new `CompileWorker`.
-    ///
-    /// # Arguments
-    ///
-    /// * `threshold` - The threshold for the number of times a bytecode must be seen before it is
-    ///   compiled.
-    /// * `hot_code_counter` - A reference-counted, thread-safe handle to count call of
-    /// * `max_concurrent_tasks` - The maximum number of concurrent jit tasks allowed.
-    pub(crate) fn new(
-        threshold: u64,
-        hot_code_counter: HotCodeCounter,
-        max_concurrent_tasks: usize,
-    ) -> Self {
-        Self {
-            threshold,
-            hot_code_counter: Arc::new(hot_code_counter),
-            jit_runtime: Arc::new(JitRuntime::new(JitConfig::default())),
-            semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-        }
+impl Default for AotConfig {
+    fn default() -> Self {
+        Self { opt_level: OptimizationLevel::Aggressive, no_gas: true, no_len_checks: true }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct AotCompiler {
+    pub cfg: AotConfig,
+}
+
+impl AotCompiler {
+    pub(crate) fn new(cfg: AotConfig) -> Self {
+        Self { cfg }
     }
 
-    /// Spawns a compilation task for the given bytecode with the specified specId.
-    ///
-    /// # Arguments
-    ///
-    /// * `spec_id` - The specification ID for the EVM.
-    /// * `code_hash` - The hash of the bytecode to be compiled.
-    /// * `bytecode` - The bytecode to be compiled.
-    ///
-    /// # Returns
-    ///
-    /// A `JoinHandle` to the spawned task, which resolves to a `Result` indicating success or
-    /// failure.
-    pub(crate) fn spwan(
+    /// Compile in Ahead of Time
+    pub(crate) fn compile(
         &self,
-        spec_id: SpecId,
         code_hash: B256,
         bytecode: Bytes,
-    ) -> JoinHandle<Result<(), Error>> {
-        let threshold = self.threshold;
-        let semaphore = self.semaphore.clone();
-        let hotcode_counter = self.hot_code_counter.clone();
-        let jit_rt = self.jit_runtime.clone();
-        let runtime = get_runtime();
-        runtime.spawn(async move {
-            let _permit = semaphore.acquire().await.unwrap();
-            // Check if the bytecode is all zeros
-            if code_hash.is_zero() {
-                return Ok(());
-            }
-            // Read the current count of the bytecode hash from the embedded database
-            let count = hotcode_counter.load_hot_call_count(code_hash).unwrap();
-            let new_count = count + 1;
-            // Check if the bytecode should be compiled
-            if new_count == threshold {
-                // Compile the bytecode
-                match jit_rt.compile(code_hash, bytecode, spec_id) {
-                    Ok(_) => {
-                        tracing::info!("Compiled bytecode hash: {:#x}", code_hash);
-                    }
-                    Err(err) => {
-                        tracing::error!(
-                            "Failed to compile bytecode hash: {:#x}, error: {:#?}",
-                            code_hash,
-                            err
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-            // Only write the new count to the database after compiling successfully
-            hotcode_counter.write_hot_call_count(code_hash, new_count)
-        })
+        spec_id: SpecId,
+    ) -> Result<(), CompilerError> {
+        let context = revmc_llvm::inkwell::context::Context::create();
+        let backend = EvmLlvmBackend::new_for_target(
+            &context,
+            true,
+            self.cfg.opt_level,
+            &revmc_backend::Target::Native,
+        )
+        .map_err(|err| CompilerError::BackendInit { err: err.to_string() })?;
+        let mut compiler = EvmCompiler::new(backend);
+        let out_dir = store_path();
+        std::fs::create_dir_all(&out_dir)
+            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
+
+        compiler.gas_metering(self.cfg.no_gas);
+        unsafe {
+            compiler.stack_bound_checks(self.cfg.no_len_checks);
+        }
+        let name = code_hash.to_string();
+        compiler.set_module_name(name.clone());
+        compiler.validate_eof(true);
+        compiler.inspect_stack_length(true);
+
+        // Compile.
+        let _f_id = compiler
+            .translate(&name, &bytecode, spec_id)
+            .map_err(|err| CompilerError::BytecodeTranslation { err: err.to_string() })?;
+
+        let module_out_dir = out_dir.join(&name);
+        std::fs::create_dir_all(&module_out_dir)
+            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
+        // Write object file
+        let obj = module_out_dir.join("a.o");
+        compiler
+            .write_object_to_file(&obj)
+            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
+        // Link.
+        let so_path = module_out_dir.join("a.so");
+        let linker = revmc::Linker::new();
+        linker
+            .link(&so_path, [obj.to_str().unwrap()])
+            .map_err(|err| CompilerError::Link { err: err.to_string() })?;
+
+        Ok(())
     }
 }

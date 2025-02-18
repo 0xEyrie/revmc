@@ -1,3 +1,3 @@
 # revmc-worker
 
-EVM runtime jit worker implementation.
+EVM runtime aot worker implementation.
