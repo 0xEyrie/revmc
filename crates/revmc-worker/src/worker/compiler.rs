@@ -16,7 +16,7 @@ pub(crate) struct AotConfig {
 
 impl Default for AotConfig {
     fn default() -> Self {
-        Self { opt_level: OptimizationLevel::Aggressive, no_gas: true, no_len_checks: true }
+        Self { opt_level: OptimizationLevel::Aggressive, no_gas: false, no_len_checks: false }
     }
 }
 
@@ -56,7 +56,6 @@ impl AotCompiler {
         }
         let name = module_name();
         compiler.set_module_name(&name);
-        compiler.validate_eof(true);
         compiler.inspect_stack_length(true);
 
         // Compile.

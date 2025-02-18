@@ -6,16 +6,35 @@ use super::{
 use alloy_primitives::B256;
 use revmc::primitives::{Bytes, SpecId};
 use rocksdb::Error;
-use std::sync::Arc;
-use tokio::{sync::Semaphore, task::JoinHandle};
+use std::{
+    fmt::{self, Debug},
+    sync::Arc,
+};
+use tokio::{
+    sync::{Mutex, Semaphore},
+    task::JoinHandle,
+};
 
 /// A worker responsible for compiling bytecode in machine code.
 #[derive(Debug)]
 pub struct AotCompileWorkerPool {
     pub threshold: u64,
-    hot_code_counter: Arc<HotCodeCounter>,
-    aot_compiler: Arc<AotCompiler>,
     semaphore: Arc<Semaphore>,
+    inner: Arc<WorkerPoolInner>,
+}
+
+impl Debug for WorkerPoolInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkerPoolInner")
+            .field("hot_code_counter", &self.hot_code_counter)
+            .field("aot_compiler", &self.aot_compiler)
+            .finish()
+    }
+}
+
+struct WorkerPoolInner {
+    hot_code_counter: Mutex<HotCodeCounter>,
+    aot_compiler: Mutex<AotCompiler>,
 }
 
 impl AotCompileWorkerPool {
@@ -34,9 +53,28 @@ impl AotCompileWorkerPool {
     ) -> Self {
         Self {
             threshold,
-            hot_code_counter: Arc::new(hot_code_counter),
-            aot_compiler: Arc::new(AotCompiler::new(AotConfig::default())),
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
+            inner: Arc::new(WorkerPoolInner {
+                hot_code_counter: Mutex::new(hot_code_counter),
+                aot_compiler: Mutex::new(AotCompiler::new(AotConfig::default())),
+            }),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn new_with_config(
+        threshold: u64,
+        hot_code_counter: HotCodeCounter,
+        max_concurrent_tasks: usize,
+        config: AotConfig,
+    ) -> Self {
+        Self {
+            threshold,
+            semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
+            inner: Arc::new(WorkerPoolInner {
+                hot_code_counter: Mutex::new(hot_code_counter),
+                aot_compiler: Mutex::new(AotCompiler::new(config)),
+            }),
         }
     }
 
@@ -60,8 +98,7 @@ impl AotCompileWorkerPool {
     ) -> JoinHandle<Result<(), Error>> {
         let threshold = self.threshold;
         let semaphore = self.semaphore.clone();
-        let hotcode_counter = self.hot_code_counter.clone();
-        let aot_compiler = self.aot_compiler.clone();
+        let inner = self.inner.clone();
         let runtime = get_runtime();
         runtime.spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
@@ -69,11 +106,13 @@ impl AotCompileWorkerPool {
             if code_hash.is_zero() {
                 return Ok(());
             }
+            let counter = inner.hot_code_counter.lock().await;
             // Read the current count of the bytecode hash from the embedded database
-            let count = hotcode_counter.load_hot_call_count(code_hash).unwrap();
+            let count = counter.load_hot_call_count(code_hash).unwrap();
             let new_count = count + 1;
             // Check if the bytecode should be compiled
             if new_count == threshold {
+                let aot_compiler = inner.aot_compiler.lock().await;
                 // Compile the bytecode
                 match aot_compiler.compile(code_hash, bytecode, spec_id) {
                     Ok(_) => {
@@ -90,7 +129,7 @@ impl AotCompileWorkerPool {
                 }
             }
             // Only write the new count to the database after compiling successfully
-            hotcode_counter.write_hot_call_count(code_hash, new_count)
+            counter.write_hot_call_count(code_hash, new_count)
         })
     }
 }

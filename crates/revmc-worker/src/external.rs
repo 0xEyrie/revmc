@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug,
+    fmt::{self, Debug},
     num::NonZeroUsize,
     sync::{RwLock, TryLockError},
 };
@@ -19,12 +19,21 @@ pub enum FetchedFnResult {
     Found(EvmCompilerFn),
     NotFound,
 }
+
+impl Debug for EXTCompileWorker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EXTCompileWorker")
+            .field("worker_pool", &self.worker_pool)
+            .field("cache", &self.cache)
+            .finish()
+    }
+}
+
 /// Compiler Worker as an external context.
 ///
 /// External function fetching is optimized by using an LRU Cache.
 /// In many cases, a contract that is called will likely be called again,
 /// so the cache helps reduce library loading cost.
-#[derive(Debug)]
 pub struct EXTCompileWorker {
     worker_pool: AotCompileWorkerPool,
     pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
