@@ -1,9 +1,17 @@
-use std::{ fmt::Debug, num::NonZeroUsize, sync::{ RwLock, TryLockError } };
+use std::{
+    fmt::Debug,
+    num::NonZeroUsize,
+    sync::{RwLock, TryLockError},
+};
 
-use crate::{ error::ExtError, worker::{ store_path, AotCompileWorkerPool, HotCodeCounter } };
+use crate::{
+    error::ExtError,
+    module_name,
+    worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
+};
 use alloy_primitives::B256;
 use lru::LruCache;
-use revm_primitives::{ Bytes, SpecId };
+use revm_primitives::{Bytes, SpecId};
 use revmc::EvmCompilerFn;
 
 #[derive(PartialEq, Debug)]
@@ -25,11 +33,8 @@ pub struct EXTCompileWorker {
 impl EXTCompileWorker {
     pub fn new(threshold: u64, worker_pool_size: usize, cache_size_words: usize) -> Self {
         let hot_code_counter = HotCodeCounter::new(worker_pool_size);
-        let compile_worker = AotCompileWorkerPool::new(
-            threshold,
-            hot_code_counter,
-            worker_pool_size
-        );
+        let compile_worker =
+            AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
 
         Self {
             worker_pool: compile_worker,
@@ -48,15 +53,14 @@ impl EXTCompileWorker {
 
             let cache = match self.cache.try_write() {
                 Ok(c) => Some(c),
-                Err(err) =>
-                    match err {
-                        /* in this case, read from file instead of cache */
-                        TryLockError::WouldBlock => {
-                            acq = false;
-                            None
-                        }
-                        TryLockError::Poisoned(err) => Some(err.into_inner()),
+                Err(err) => match err {
+                    /* in this case, read from file instead of cache */
+                    TryLockError::WouldBlock => {
+                        acq = false;
+                        None
                     }
+                    TryLockError::Poisoned(err) => Some(err.into_inner()),
+                },
             };
 
             if acq {
@@ -65,20 +69,20 @@ impl EXTCompileWorker {
                 }
             }
         }
+        let name = module_name();
         let so = store_path().join(code_hash.to_string()).join("a.so");
         if so.try_exists().unwrap_or(false) {
             {
-                let lib = (unsafe { libloading::Library::new(&so) }).map_err(
-                    |err| ExtError::LibLoadingError { err: err.to_string() }
-                )?;
+                let lib = (unsafe { libloading::Library::new(&so) })
+                    .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
 
                 let f = unsafe {
-                    *lib
-                        .get("fibonacci".as_bytes())
+                    *lib.get(name.as_bytes())
                         .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
                 };
 
-                let mut cache = self.cache
+                let mut cache = self
+                    .cache
                     .write()
                     .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
                 cache.put(*code_hash, (f, lib));

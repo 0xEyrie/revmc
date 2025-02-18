@@ -33,7 +33,7 @@ pub fn register_handler<DB: Database + 'static>(
                 let res = catch_unwind(AssertUnwindSafe(|| unsafe {
                     f.call_with_interpreter_and_memory(interpreter, memory, context)
                 }));
-                
+
                 if let Err(err) = &res {
                     tracing::error!(
                         "AOT function call error: with bytecode hash {} {:#?}",

@@ -1,4 +1,4 @@
-use super::path::store_path;
+use super::{env::store_path, module_name};
 use crate::error::CompilerError;
 
 use revm_primitives::{Bytes, SpecId, B256};
@@ -54,8 +54,8 @@ impl AotCompiler {
         unsafe {
             compiler.stack_bound_checks(self.cfg.no_len_checks);
         }
-        let name = "fibonacci";
-        compiler.set_module_name(name.clone());
+        let name = module_name();
+        compiler.set_module_name(&name);
         compiler.validate_eof(true);
         compiler.inspect_stack_length(true);
 
@@ -64,7 +64,7 @@ impl AotCompiler {
             .translate(&name, &bytecode, spec_id)
             .map_err(|err| CompilerError::BytecodeTranslation { err: err.to_string() })?;
 
-        let module_out_dir = out_dir.join(&name);
+        let module_out_dir = out_dir.join(code_hash.to_string());
         std::fs::create_dir_all(&module_out_dir)
             .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
         // Write object file

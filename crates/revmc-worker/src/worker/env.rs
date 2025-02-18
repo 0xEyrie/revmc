@@ -16,6 +16,17 @@ fn default_path() -> PathBuf {
     PathBuf::from(home_dir).join(config_path)
 }
 
+pub(crate) fn module_name() -> String {
+    #[cfg(test)]
+    {
+        "test_module".to_string()
+    }
+    #[cfg(not(test))]
+    {
+        std::env::var("COMPILE_NAME").unwrap_or_else(|_| "default_module".to_string())
+    }
+}
+
 /// Returns the path to the store that save compiled result.
 pub(crate) fn store_path() -> PathBuf {
     default_path().join("output")
