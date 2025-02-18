@@ -54,7 +54,7 @@ impl AotCompiler {
         unsafe {
             compiler.stack_bound_checks(self.cfg.no_len_checks);
         }
-        let name = code_hash.to_string();
+        let name = "fibonacci";
         compiler.set_module_name(name.clone());
         compiler.validate_eof(true);
         compiler.inspect_stack_length(true);
