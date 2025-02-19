@@ -1,7 +1,11 @@
+use rocksdb::Error as DbError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub(crate) enum CompilerError {
+pub enum Error {
+    #[error("Database error: {0}")]
+    Database(#[from] DbError),
+
     #[error("Backend init error, err: {err}")]
     BackendInit { err: String },
 
@@ -13,4 +17,13 @@ pub(crate) enum CompilerError {
 
     #[error("Link error, err: {err}")]
     Link { err: String },
+
+    #[error("Lib loading error: {err}")]
+    LibLoading { err: String },
+
+    #[error("Get symbol error: {err}")]
+    GetSymbol { err: String },
+
+    #[error("RwLock poison error: {err}")]
+    RwLockPoison { err: String },
 }

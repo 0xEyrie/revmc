@@ -1,6 +1,4 @@
 #![allow(missing_docs)]
-mod compiler;
-pub mod ext;
+mod worker;
 
-pub(crate) use compiler::*;
-pub(crate) use ext::*;
+pub use worker::Error;

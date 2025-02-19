@@ -1,3 +1,5 @@
+use crate::error::Error;
+
 use super::{
     compiler::{AotCompiler, AotConfig},
     get_runtime,
@@ -5,7 +7,6 @@ use super::{
 };
 use alloy_primitives::B256;
 use revmc::primitives::{Bytes, SpecId};
-use rocksdb::Error;
 use std::{
     fmt::{self, Debug},
     sync::Arc,
@@ -108,28 +109,31 @@ impl AotCompileWorkerPool {
             }
             let counter = inner.hot_code_counter.lock().await;
             // Read the current count of the bytecode hash from the embedded database
-            let count = counter.load_hot_call_count(code_hash).unwrap();
+            let count = counter.load_hot_call_count(code_hash)?;
             let new_count = count + 1;
             // Check if the bytecode should be compiled
             if new_count == threshold {
                 let aot_compiler = inner.aot_compiler.lock().await;
                 // Compile the bytecode
-                match aot_compiler.compile(code_hash, bytecode, spec_id) {
+                match aot_compiler.compile(code_hash, bytecode, spec_id).await {
                     Ok(_) => {
+                        #[cfg(feature = "tracing")]
                         tracing::info!("Compiled bytecode hash: {:#x}", code_hash);
                     }
                     Err(err) => {
+                        #[cfg(feature = "tracing")]
                         tracing::error!(
                             "Failed to compile bytecode hash: {:#x}, error: {:#?}",
                             code_hash,
                             err
                         );
-                        return Ok(());
+                        // skip update the count of contract call
+                        return Err(err);
                     }
                 }
             }
             // Only write the new count to the database after compiling successfully
-            counter.write_hot_call_count(code_hash, new_count)
+            counter.write_hot_call_count(code_hash, new_count).map_err(Error::Database)
         })
     }
 }

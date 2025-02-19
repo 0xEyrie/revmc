@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    error::ExtError,
+    error::Error,
     module_name,
     worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
 };
@@ -52,7 +52,7 @@ impl EXTCompileWorker {
     }
 
     /// Fetches the compiled function from disk, if exists
-    pub fn get_function(&self, code_hash: &B256) -> Result<FetchedFnResult, ExtError> {
+    pub fn get_function(&self, code_hash: &B256) -> Result<FetchedFnResult, Error> {
         if code_hash.is_zero() {
             return Ok(FetchedFnResult::NotFound);
         }
@@ -83,17 +83,17 @@ impl EXTCompileWorker {
         if so.try_exists().unwrap_or(false) {
             {
                 let lib = (unsafe { libloading::Library::new(&so) })
-                    .map_err(|err| ExtError::LibLoadingError { err: err.to_string() })?;
+                    .map_err(|err| Error::LibLoading { err: err.to_string() })?;
 
                 let f = unsafe {
                     *lib.get(name.as_bytes())
-                        .map_err(|err| ExtError::GetSymbolError { err: err.to_string() })?
+                        .map_err(|err| Error::GetSymbol { err: err.to_string() })?
                 };
 
                 let mut cache = self
                     .cache
                     .write()
-                    .map_err(|err| ExtError::RwLockPoison { err: err.to_string() })?;
+                    .map_err(|err| Error::RwLockPoison { err: err.to_string() })?;
                 cache.put(*code_hash, (f, lib));
 
                 return Ok(FetchedFnResult::Found(f));
@@ -102,10 +102,9 @@ impl EXTCompileWorker {
         Ok(FetchedFnResult::NotFound)
     }
 
-    /// Starts compile routine aot compile the code referred by code_hash
-    pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), ExtError> {
+    /// Spwan AOT compile the byecode referred by code_hash
+    pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), Error> {
         self.worker_pool.spwan(spec_id, code_hash, bytecode);
-
         Ok(())
     }
 }

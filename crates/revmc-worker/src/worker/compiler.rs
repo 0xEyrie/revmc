@@ -1,5 +1,8 @@
+use std::fs;
+
+use crate::error::Error;
+
 use super::{env::store_path, module_name};
-use crate::error::CompilerError;
 
 use revm_primitives::{Bytes, SpecId, B256};
 use revmc::{EvmCompiler, OptimizationLevel};
@@ -31,12 +34,12 @@ impl AotCompiler {
     }
 
     /// Compile in Ahead of Time
-    pub(crate) fn compile(
+    pub(crate) async fn compile(
         &self,
         code_hash: B256,
         bytecode: Bytes,
         spec_id: SpecId,
-    ) -> Result<(), CompilerError> {
+    ) -> Result<(), Error> {
         let context = revmc_llvm::inkwell::context::Context::create();
         let backend = EvmLlvmBackend::new_for_target(
             &context,
@@ -44,12 +47,8 @@ impl AotCompiler {
             self.cfg.opt_level,
             &revmc_backend::Target::Native,
         )
-        .map_err(|err| CompilerError::BackendInit { err: err.to_string() })?;
+        .map_err(|err| Error::BackendInit { err: err.to_string() })?;
         let mut compiler = EvmCompiler::new(backend);
-        let out_dir = store_path();
-        std::fs::create_dir_all(&out_dir)
-            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
-
         compiler.gas_metering(self.cfg.no_gas);
         unsafe {
             compiler.stack_bound_checks(self.cfg.no_len_checks);
@@ -61,23 +60,26 @@ impl AotCompiler {
         // Compile.
         let _f_id = compiler
             .translate(&name, &bytecode, spec_id)
-            .map_err(|err| CompilerError::BytecodeTranslation { err: err.to_string() })?;
+            .map_err(|err| Error::BytecodeTranslation { err: err.to_string() })?;
 
+        let out_dir = store_path();
         let module_out_dir = out_dir.join(code_hash.to_string());
-        std::fs::create_dir_all(&module_out_dir)
-            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
+        fs::create_dir_all(&module_out_dir)
+            .map_err(|err| Error::FileIO { err: err.to_string() })?;
         // Write object file
         let obj = module_out_dir.join("a.o");
         compiler
             .write_object_to_file(&obj)
-            .map_err(|err| CompilerError::FileIO { err: err.to_string() })?;
+            .map_err(|err| Error::FileIO { err: err.to_string() })?;
         // Link.
         let so_path = module_out_dir.join("a.so");
         let linker = revmc::Linker::new();
         linker
             .link(&so_path, [obj.to_str().unwrap()])
-            .map_err(|err| CompilerError::Link { err: err.to_string() })?;
+            .map_err(|err| Error::Link { err: err.to_string() })?;
 
+        // Delete object files to reduce storage usage
+        fs::remove_file(&obj).map_err(|err| Error::FileIO { err: err.to_string() })?;
         Ok(())
     }
 }

@@ -2,7 +2,6 @@
 name = "revmc-worker"
 description = "Evm Compiler worker that compiles in node runtime"
 
-
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -38,7 +37,7 @@ color-eyre.workspace = true
 once_cell = "1.20.2"
 tokio = { version = "1.41.1", features = ["full"] }
 thiserror = "1.0.34"
-tracing.workspace = true
+tracing = { workspace = true, optional = true }
 libloading = "0.8"
 lru = "0.12.5"
 rocksdb = { version = "0.23.0", features = ["multi-threaded-cf"] }

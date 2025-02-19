@@ -56,7 +56,7 @@ fn test_worker() {
     thread::sleep(std::time::Duration::from_secs(2));
     // Check AOT compilation was successful
     {
-        let result = evm.context.external.get_function(&fib_hash).unwrap();
+        let result: FetchedFnResult = evm.context.external.get_function(&fib_hash).unwrap();
         assert!(matches!(result, FetchedFnResult::Found(_)));
     }
     assert!(code_path.exists(), "Failed to AOT compile");
