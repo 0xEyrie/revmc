@@ -5,7 +5,8 @@ use super::{
     get_runtime,
     hotcode::HotCodeCounter,
 };
-use alloy_primitives::B256;
+
+use revm_primitives::B256;
 use revmc::primitives::{Bytes, SpecId};
 use std::{
     fmt::{self, Debug},

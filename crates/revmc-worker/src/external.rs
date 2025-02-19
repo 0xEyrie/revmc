@@ -9,9 +9,8 @@ use crate::{
     module_name,
     worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
 };
-use alloy_primitives::B256;
 use lru::LruCache;
-use revm_primitives::{Bytes, SpecId};
+use revm_primitives::{Bytes, SpecId, B256};
 use revmc::EvmCompilerFn;
 
 #[derive(PartialEq, Debug)]

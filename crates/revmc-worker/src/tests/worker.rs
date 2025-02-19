@@ -1,9 +1,8 @@
-use alloy_primitives::address;
 use revm::{
     db::{CacheDB, EmptyDB, EmptyDBTyped},
     Evm,
 };
-use revm_primitives::{hex, AccountInfo, Address, Bytecode, TransactTo, B256, U256};
+use revm_primitives::{address, hex, AccountInfo, Address, Bytecode, TransactTo, B256, U256};
 use std::{convert::Infallible, sync::Arc, thread};
 
 use crate::{

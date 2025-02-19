@@ -2416,18 +2416,13 @@ dependencies = [
 name = "revmc-worker"
 version = "0.1.0"
 dependencies = [
- "alloy-primitives",
- "color-eyre",
  "libloading",
  "lru",
- "once_cell",
  "revm",
- "revm-interpreter",
  "revm-primitives",
  "revmc",
  "revmc-backend",
- "revmc-builtins",
- "revmc-cranelift",
+ "revmc-build",
  "revmc-llvm",
  "rocksdb",
  "thiserror 1.0.69",
