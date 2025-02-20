@@ -3,7 +3,12 @@ use revm::{
     Evm,
 };
 use revm_primitives::{address, hex, AccountInfo, Address, Bytecode, TransactTo, B256, U256};
-use std::{convert::Infallible, sync::Arc, thread};
+use std::{
+    convert::Infallible,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use crate::{
     register_handler, store_path, tests::utils::TestEnvGuard, EXTCompileWorker, FetchedFnResult,
@@ -17,7 +22,20 @@ type MockEVM = Evm<'static, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallib
 #[inline]
 fn setup_evm() -> (MockEVM, B256) {
     let _g = TestEnvGuard::new();
-    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
+    let start_time = Instant::now();
+    let timeout = Duration::from_secs(1800);
+    let mut external: Option<EXTCompileWorker> = None;
+    while external.is_none() {
+        let a = EXTCompileWorker::new(false, 1, 3, 128).unwrap();
+        external = Some(a);
+        if external.is_none() {
+            if start_time.elapsed() >= timeout {
+                panic!("Failed to create EXTCompileWorker within 10 minutes.");
+            }
+            thread::sleep(Duration::from_secs(10));
+        }
+    }
+    let ext_worker = Arc::new(external.unwrap());
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()
         .with_db(db)

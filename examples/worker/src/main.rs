@@ -18,7 +18,7 @@ pub const FIBONACCI_CODE: &[u8] =
 /// Second call loads the ExternalFn from embedded db to cache
 /// and executes transaction with it
 fn main() {
-    let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128));
+    let ext_worker = Arc::new(EXTCompileWorker::new(true, 1, 3, 128).unwrap());
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()
         .with_db(db)

@@ -36,3 +36,8 @@ pub(crate) fn store_path() -> PathBuf {
 pub(crate) fn db_path() -> PathBuf {
     default_path().join("db")
 }
+
+/// Returns the path of the database.
+pub(crate) fn sc_db_path() -> PathBuf {
+    default_path().join("scdb")
+}

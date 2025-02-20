@@ -39,15 +39,19 @@ pub struct EXTCompileWorker {
 }
 
 impl EXTCompileWorker {
-    pub fn new(threshold: u64, worker_pool_size: usize, cache_size_words: usize) -> Self {
-        let hot_code_counter = HotCodeCounter::new(worker_pool_size);
-        let compile_worker =
-            AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
+    pub fn new(
+        primary: bool,
+        threshold: u64,
+        worker_pool_size: usize,
+        cache_size_words: usize,
+    ) -> Result<Self, Error> {
+        let hot_code_counter = HotCodeCounter::new(primary, worker_pool_size)?;
+        let worker_pool = AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
 
-        Self {
-            worker_pool: compile_worker,
+        Ok(Self {
+            worker_pool,
             cache: RwLock::new(LruCache::new(NonZeroUsize::new(cache_size_words).unwrap())),
-        }
+        })
     }
 
     /// Fetches the compiled function from disk, if exists

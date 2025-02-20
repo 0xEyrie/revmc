@@ -1,45 +1,44 @@
 use revm_primitives::B256;
-use rocksdb::{Error, Options, DB};
-use std::{sync::Mutex, thread};
-use tokio::time;
+use rocksdb::{Options, DB};
+use std::sync::Mutex;
 
-use super::db_path;
+use crate::error::Error;
 
-/// Embedded Database to support below features
-/// Use RocksDB to support multi-thread (not mult-process)
-/// 1. Count the call of contracts to find hot contract code
-/// 2. Save the path of machincode result to load
+use super::{db_path, sc_db_path};
+
+/// Embedded Database to support the following features:
+/// - Use RocksDB to support multi-threading (not multi-processing)
+/// - Count the number of contract calls to identify hot contract code
+/// - Save the compiled shared object (so) file after successful compilation
 #[derive(Debug)]
-pub(crate) struct HotCodeCounter(Mutex<DB>);
+pub(crate) struct HotCodeCounter {
+    pub primary: bool,
+    counter: Mutex<DB>,
+}
 
 impl HotCodeCounter {
-    pub(crate) fn new(worker_pool_size: usize) -> Self {
+    pub(crate) fn new(primary: bool, worker_pool_size: usize) -> Result<Self, Error> {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.increase_parallelism(worker_pool_size as i32);
         opts.set_max_background_jobs(worker_pool_size as i32);
         opts.set_max_write_buffer_number(worker_pool_size as i32);
-        opts.set_max_open_files(1000);
+        opts.set_max_open_files(worker_pool_size as i32);
         let db_path = db_path();
-        let path = db_path.to_str().unwrap();
+        let primary_path = db_path.to_str().unwrap();
+        let db = if primary {
+            DB::open(&opts, primary_path)?
+        } else {
+            let sc_db_path = sc_db_path();
+            let secondary_path = sc_db_path.to_str().unwrap();
+            DB::open_as_secondary(&opts, primary_path, secondary_path)?
+        };
 
-        let mut db: Option<DB> = None;
-        while db.is_none() {
-            match DB::open(&opts, path) {
-                Ok(database) => {
-                    db = Some(database);
-                }
-                Err(_) => {
-                    thread::sleep(time::Duration::from_secs(2));
-                }
-            }
-        }
-
-        Self(Mutex::new(db.unwrap()))
+        Ok(Self { primary, counter: Mutex::new(db) })
     }
 
     pub(crate) fn load_hot_call_count(&self, code_hash: B256) -> Result<u64, Error> {
-        let db = self.0.lock().unwrap();
+        let db = self.counter.lock().unwrap();
         match db.get(code_hash) {
             Ok(Some(count)) => {
                 let count: [u8; 8] =
@@ -47,13 +46,14 @@ impl HotCodeCounter {
                 Ok(u64::from_be_bytes(count))
             }
             Ok(None) => Ok(0),
-            Err(err) => Err(err),
+            Err(err) => Err(Error::Database(err)),
         }
     }
 
     pub(crate) fn write_hot_call_count(&self, code_hash: B256, value: u64) -> Result<(), Error> {
         let value = value.to_be_bytes();
-        let db = self.0.lock().unwrap();
-        db.put(code_hash, value)
+        let db = self.counter.lock().unwrap();
+        db.put(code_hash, value)?;
+        Ok(())
     }
 }

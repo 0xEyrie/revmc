@@ -22,7 +22,7 @@ pub fn register_handler<DB: Database + 'static>(
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
                 let _res = context.external.spwan(spec_id, code_hash, bytecode.original_bytes());
                 #[cfg(feature = "tracing")]
-                if let Err(err) = res {
+                if let Err(err) = _res {
                     tracing::error!("Worker failed: with bytecode hash {}: {:#?}", code_hash, err);
                 }
 

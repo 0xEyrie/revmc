@@ -35,7 +35,7 @@ impl Debug for WorkerPoolInner {
 }
 
 struct WorkerPoolInner {
-    hot_code_counter: Mutex<HotCodeCounter>,
+    hot_code_counter: HotCodeCounter,
     aot_compiler: Mutex<AotCompiler>,
 }
 
@@ -57,7 +57,7 @@ impl AotCompileWorkerPool {
             threshold,
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             inner: Arc::new(WorkerPoolInner {
-                hot_code_counter: Mutex::new(hot_code_counter),
+                hot_code_counter,
                 aot_compiler: Mutex::new(AotCompiler::new(AotConfig::default())),
             }),
         }
@@ -74,7 +74,7 @@ impl AotCompileWorkerPool {
             threshold,
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             inner: Arc::new(WorkerPoolInner {
-                hot_code_counter: Mutex::new(hot_code_counter),
+                hot_code_counter,
                 aot_compiler: Mutex::new(AotCompiler::new(config)),
             }),
         }
@@ -108,14 +108,15 @@ impl AotCompileWorkerPool {
             if code_hash.is_zero() {
                 return Ok(());
             }
-            let counter = inner.hot_code_counter.lock().await;
+            let counter = &inner.hot_code_counter;
+            if !counter.primary {
+                return Ok(());
+            }
             // Read the current count of the bytecode hash from the embedded database
             let count = counter.load_hot_call_count(code_hash)?;
             let new_count = count + 1;
-            // Check if the bytecode should be compiled
             if new_count == threshold {
                 let aot_compiler = inner.aot_compiler.lock().await;
-                // Compile the bytecode
                 match aot_compiler.compile(code_hash, bytecode, spec_id).await {
                     Ok(_) => {
                         #[cfg(feature = "tracing")]
@@ -128,13 +129,14 @@ impl AotCompileWorkerPool {
                             code_hash,
                             err
                         );
-                        // skip update the count of contract call
+                        // Skip updating the count of contract calls to ensure that
+                        // "so file doesn't exist" means the count is less than the threshold.
                         return Err(err);
                     }
                 }
             }
             // Only write the new count to the database after compiling successfully
-            counter.write_hot_call_count(code_hash, new_count).map_err(Error::Database)
+            counter.write_hot_call_count(code_hash, new_count)
         })
     }
 }
