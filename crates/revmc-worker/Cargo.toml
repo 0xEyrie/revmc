@@ -1,6 +1,6 @@
 [package]
 name = "revmc-worker"
-description = "Evm Compiler worker that compiles in node runtime"
+description = "EVM AOT Compile Worker for using machine code in hot contracts within a node runtime"
 
 version.workspace = true
 authors.workspace = true
@@ -20,7 +20,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-#alloy-primitives = { workspace = true, features = ["std"] }
 
 revmc.workspace = true
 revm.workspace = true
