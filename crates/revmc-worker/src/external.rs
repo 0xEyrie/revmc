@@ -1,16 +1,13 @@
-use std::{
-    fmt::{self, Debug},
-    num::NonZeroUsize,
-    sync::{RwLock, TryLockError},
-};
+use std::{ fmt::{ self, Debug }, num::NonZeroUsize, sync::{ Arc, RwLock, TryLockError } };
 
 use crate::{
     error::Error,
     module_name,
-    worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
+    worker::{ store_path, AotCompileWorkerPool, HotCodeCounter },
 };
+use libloading::{ Library, Symbol };
 use lru::LruCache;
-use revm_primitives::{Bytes, SpecId, B256};
+use revm_primitives::{ Bytes, SpecId, B256 };
 use revmc::EvmCompilerFn;
 
 #[derive(PartialEq, Debug)]
@@ -28,6 +25,8 @@ impl Debug for EXTCompileWorker {
     }
 }
 
+#[derive(Debug)]
+pub struct EvmCompilerFnTuple((EvmCompilerFn, Arc<Library>));
 /// Compiler Worker as an external context.
 ///
 /// External function fetching is optimized by using an LRU Cache.
@@ -35,7 +34,7 @@ impl Debug for EXTCompileWorker {
 /// so the cache helps reduce library loading cost.
 pub struct EXTCompileWorker {
     worker_pool: AotCompileWorkerPool,
-    pub cache: RwLock<LruCache<B256, (EvmCompilerFn, libloading::Library)>>,
+    pub cache: RwLock<LruCache<B256, EvmCompilerFnTuple>>,
 }
 
 impl EXTCompileWorker {
@@ -43,7 +42,7 @@ impl EXTCompileWorker {
         primary: bool,
         threshold: u64,
         worker_pool_size: usize,
-        cache_size_words: usize,
+        cache_size_words: usize
     ) -> Result<Self, Error> {
         let hot_code_counter = HotCodeCounter::new(primary, worker_pool_size)?;
         let worker_pool = AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
@@ -65,41 +64,38 @@ impl EXTCompileWorker {
 
             let cache = match self.cache.try_write() {
                 Ok(c) => Some(c),
-                Err(err) => match err {
-                    /* in this case, read from file instead of cache */
-                    TryLockError::WouldBlock => {
-                        acq = false;
-                        None
+                Err(err) =>
+                    match err {
+                        /* in this case, read from file instead of cache */
+                        TryLockError::WouldBlock => {
+                            acq = false;
+                            None
+                        }
+                        TryLockError::Poisoned(err) => Some(err.into_inner()),
                     }
-                    TryLockError::Poisoned(err) => Some(err.into_inner()),
-                },
             };
 
             if acq {
-                if let Some((f, _)) = cache.unwrap().get(code_hash) {
-                    return Ok(FetchedFnResult::Found(*f));
+                if let Some(t) = cache.unwrap().get(code_hash) {
+                    return Ok(FetchedFnResult::Found(t.0.0));
                 }
             }
         }
+
         let name = module_name();
         let so = store_path().join(code_hash.to_string()).join("a.so");
         if so.try_exists().unwrap_or(false) {
             {
-                let lib = (unsafe { libloading::Library::new(&so) })
-                    .map_err(|err| Error::LibLoading { err: err.to_string() })?;
+                let lib = Arc::new((unsafe { Library::new(so) })?);
+                let f: Symbol<'_, revmc::EvmCompilerFn> = unsafe { lib.get(name.as_bytes())? };
 
-                let f = unsafe {
-                    *lib.get(name.as_bytes())
-                        .map_err(|err| Error::GetSymbol { err: err.to_string() })?
-                };
-
-                let mut cache = self
-                    .cache
+                let tuple = EvmCompilerFnTuple((*f, lib.clone()));
+                let mut cache = self.cache
                     .write()
                     .map_err(|err| Error::RwLockPoison { err: err.to_string() })?;
-                cache.put(*code_hash, (f, lib));
+                cache.put(*code_hash, tuple);
 
-                return Ok(FetchedFnResult::Found(f));
+                return Ok(FetchedFnResult::Found(*f));
             }
         }
         Ok(FetchedFnResult::NotFound)

@@ -1,5 +1,6 @@
 use rocksdb::Error as DbError;
 use thiserror::Error;
+use libloading::Error as LibLoadingError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -18,8 +19,8 @@ pub enum Error {
     #[error("Link error, err: {err}")]
     Link { err: String },
 
-    #[error("Lib loading error: {err}")]
-    LibLoading { err: String },
+    #[error("Lib loading error: {0}")]
+    LibLoading(#[from] LibLoadingError),
 
     #[error("Get symbol error: {err}")]
     GetSymbol { err: String },
