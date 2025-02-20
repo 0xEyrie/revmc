@@ -67,8 +67,6 @@ fn test_worker() {
     let mut result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
     let target_vendor = std::env::var("CARGO_CFG_TARGET_VENDOR").unwrap();
-    println!("Target Vendor{:?}", target_vendor);
-    println!("Debug");
     // Wait for worker to AOT compile code
     thread::sleep(std::time::Duration::from_secs(2));
     // Check AOT compilation was successful
