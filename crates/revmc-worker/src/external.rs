@@ -1,13 +1,17 @@
-use std::{ fmt::{ self, Debug }, num::NonZeroUsize, sync::{ Arc, RwLock, TryLockError } };
+use std::{
+    fmt::{self, Debug},
+    num::NonZeroUsize,
+    sync::{Arc, RwLock, TryLockError},
+};
 
 use crate::{
     error::Error,
     module_name,
-    worker::{ store_path, AotCompileWorkerPool, HotCodeCounter },
+    worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
 };
-use libloading::{ Library, Symbol };
+use libloading::{Library, Symbol};
 use lru::LruCache;
-use revm_primitives::{ Bytes, SpecId, B256 };
+use revm_primitives::{Bytes, SpecId, B256};
 use revmc::EvmCompilerFn;
 
 #[derive(PartialEq, Debug)]
@@ -42,7 +46,7 @@ impl EXTCompileWorker {
         primary: bool,
         threshold: u64,
         worker_pool_size: usize,
-        cache_size_words: usize
+        cache_size_words: usize,
     ) -> Result<Self, Error> {
         let hot_code_counter = HotCodeCounter::new(primary, worker_pool_size)?;
         let worker_pool = AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
@@ -64,20 +68,19 @@ impl EXTCompileWorker {
 
             let cache = match self.cache.try_write() {
                 Ok(c) => Some(c),
-                Err(err) =>
-                    match err {
-                        /* in this case, read from file instead of cache */
-                        TryLockError::WouldBlock => {
-                            acq = false;
-                            None
-                        }
-                        TryLockError::Poisoned(err) => Some(err.into_inner()),
+                Err(err) => match err {
+                    /* in this case, read from file instead of cache */
+                    TryLockError::WouldBlock => {
+                        acq = false;
+                        None
                     }
+                    TryLockError::Poisoned(err) => Some(err.into_inner()),
+                },
             };
 
             if acq {
                 if let Some(t) = cache.unwrap().get(code_hash) {
-                    return Ok(FetchedFnResult::Found(t.0.0));
+                    return Ok(FetchedFnResult::Found(t.0 .0));
                 }
             }
         }
@@ -90,7 +93,8 @@ impl EXTCompileWorker {
                 let f: Symbol<'_, revmc::EvmCompilerFn> = unsafe { lib.get(name.as_bytes())? };
 
                 let tuple = EvmCompilerFnTuple((*f, lib.clone()));
-                let mut cache = self.cache
+                let mut cache = self
+                    .cache
                     .write()
                     .map_err(|err| Error::RwLockPoison { err: err.to_string() })?;
                 cache.put(*code_hash, tuple);

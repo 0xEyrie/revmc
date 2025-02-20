@@ -1,6 +1,6 @@
+use libloading::Error as LibLoadingError;
 use rocksdb::Error as DbError;
 use thiserror::Error;
-use libloading::Error as LibLoadingError;
 
 #[derive(Error, Debug)]
 pub enum Error {
