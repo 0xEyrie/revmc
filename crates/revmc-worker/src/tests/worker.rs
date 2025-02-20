@@ -26,13 +26,16 @@ fn setup_evm() -> (MockEVM, B256) {
     let timeout = Duration::from_secs(1800);
     let mut external: Option<EXTCompileWorker> = None;
     while external.is_none() {
-        let a = EXTCompileWorker::new(false, 1, 3, 128).unwrap();
-        external = Some(a);
-        if external.is_none() {
-            if start_time.elapsed() >= timeout {
-                panic!("Failed to create EXTCompileWorker within 10 minutes.");
+        match EXTCompileWorker::new(true, 1, 3, 128) {
+            Ok(worker) => {
+                external = Some(worker);
             }
-            thread::sleep(Duration::from_secs(10));
+            Err(_) => {
+                if start_time.elapsed() >= timeout {
+                    panic!("Failed to create EXTCompileWorker within 10 minutes.");
+                }
+                thread::sleep(Duration::from_secs(10));
+            }
         }
     }
     let ext_worker = Arc::new(external.unwrap());

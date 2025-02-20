@@ -23,7 +23,6 @@ impl HotCodeCounter {
         opts.increase_parallelism(worker_pool_size as i32);
         opts.set_max_background_jobs(worker_pool_size as i32);
         opts.set_max_write_buffer_number(worker_pool_size as i32);
-        opts.set_max_open_files(worker_pool_size as i32);
         let db_path = db_path();
         let primary_path = db_path.to_str().unwrap();
         let db = if primary {
