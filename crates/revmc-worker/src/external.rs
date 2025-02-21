@@ -107,7 +107,7 @@ impl EXTCompileWorker {
 
     /// Spwan AOT compile the byecode referred by code_hash
     pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), Error> {
-        self.worker_pool.spwan(spec_id, code_hash, bytecode);
+        self.worker_pool.spwan(spec_id, code_hash, bytecode)?;
         Ok(())
     }
 }

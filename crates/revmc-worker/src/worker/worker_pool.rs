@@ -12,10 +12,7 @@ use std::{
     fmt::{self, Debug},
     sync::Arc,
 };
-use tokio::{
-    sync::{Mutex, Semaphore},
-    task::JoinHandle,
-};
+use tokio::sync::{Mutex, Semaphore};
 
 /// A worker responsible for compiling bytecode in machine code.
 #[derive(Debug)]
@@ -97,10 +94,13 @@ impl AotCompileWorkerPool {
         spec_id: SpecId,
         code_hash: B256,
         bytecode: Bytes,
-    ) -> JoinHandle<Result<(), Error>> {
+    ) -> Result<(), Error> {
         let threshold = self.threshold;
         let semaphore = self.semaphore.clone();
         let inner = self.inner.clone();
+        if !inner.hot_code_counter.primary {
+            return Ok(());
+        }
         let runtime = get_runtime();
         runtime.spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
@@ -109,9 +109,7 @@ impl AotCompileWorkerPool {
                 return Ok(());
             }
             let counter = &inner.hot_code_counter;
-            if !counter.primary {
-                return Ok(());
-            }
+
             // Read the current count of the bytecode hash from the embedded database
             let count = counter.load_hot_call_count(code_hash)?;
             let new_count = count + 1;
@@ -137,6 +135,8 @@ impl AotCompileWorkerPool {
             }
             // Only write the new count to the database after compiling successfully
             counter.write_hot_call_count(code_hash, new_count)
-        })
+        });
+
+        Ok(())
     }
 }

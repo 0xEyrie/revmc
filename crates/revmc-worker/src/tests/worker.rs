@@ -20,13 +20,12 @@ const DEPLOYED_ADDRESS: Address = address!("000000000000000000000000000000000000
 type MockEVM = Evm<'static, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallible>>>;
 
 #[inline]
-fn setup_evm() -> (MockEVM, B256) {
-    let _g = TestEnvGuard::new();
+fn setup_evm(primary: bool) -> (MockEVM, B256) {
     let start_time = Instant::now();
     let timeout = Duration::from_secs(1800);
     let mut external: Option<EXTCompileWorker> = None;
     while external.is_none() {
-        match EXTCompileWorker::new(true, 1, 3, 128) {
+        match EXTCompileWorker::new(primary, 1, 3, 128) {
             Ok(worker) => {
                 external = Some(worker);
             }
@@ -60,9 +59,8 @@ fn setup_evm() -> (MockEVM, B256) {
     (evm, fib_hash)
 }
 
-#[test]
-fn test_worker() {
-    let (mut evm, fib_hash) = setup_evm();
+fn primary_worker_fn() {
+    let (mut evm, fib_hash) = setup_evm(true);
     let code_path = store_path().join(fib_hash.to_string());
     assert!(!code_path.exists(), "Ensure aot-compiled code doesn't exist");
 
@@ -71,6 +69,7 @@ fn test_worker() {
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     let mut result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+
     // Poll for compilation completion with timeout
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(5);
@@ -92,7 +91,7 @@ fn test_worker() {
     result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
 
-    // // Check code loaded successfully in cache
+    // Check code loaded successfully in cache
     {
         let mut cache = evm.context.external.cache.write().unwrap();
         assert!(cache.get(&fib_hash).is_some(), "Failed to load in cache");
@@ -102,4 +101,59 @@ fn test_worker() {
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     result = evm.transact().unwrap();
     assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+}
+
+#[allow(dead_code)]
+fn secondary_worker_fn() {
+    let (mut evm, fib_hash) = setup_evm(false);
+    evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
+    evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
+    let mut result = evm.transact().unwrap();
+    assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+
+    // Check code loaded successfully in cache
+    {
+        let mut cache = evm.context.external.cache.write().unwrap();
+        assert!(cache.get(&fib_hash).is_some(), "Failed to load in cache");
+    }
+    // uses cached code
+    evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
+    evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
+    result = evm.transact().unwrap();
+    assert_eq!(U256::from_be_slice(result.result.output().unwrap()), U256::from(55));
+}
+
+#[test]
+fn test_suite() {
+    test_worker_single_process();
+
+    test_worker_multi_process();
+}
+
+fn test_worker_single_process() {
+    let _g = TestEnvGuard::new();
+    primary_worker_fn();
+}
+
+fn test_worker_multi_process() {
+    let _g = TestEnvGuard::new();
+    let mut processes = Vec::new();
+    let primary_process = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("primary_worker_fn")
+        .spawn()
+        .expect("Failed to spawn child process");
+    processes.push(primary_process);
+    for _ in 0..10 {
+        let secondary_process = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("secondary_worker_fn")
+            .spawn()
+            .expect("Failed to spawn child process");
+
+        processes.push(secondary_process);
+    }
+
+    for process in processes {
+        let result = process.wait_with_output().expect("Failed to wait on child");
+        assert!(result.status.success(), "Child process failed");
+    }
 }
