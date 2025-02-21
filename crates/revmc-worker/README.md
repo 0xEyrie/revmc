@@ -1,3 +1,3 @@
 # revmc-worker
 
-EVM runtime aot worker implementation.
+EVM aot compilation worker within node runtime implementation.

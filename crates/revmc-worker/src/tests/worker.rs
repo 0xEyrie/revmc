@@ -19,25 +19,35 @@ const FIBONACCI_CODE: &[u8] =
 const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000001234");
 type MockEVM = Evm<'static, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallible>>>;
 
-#[inline]
-fn setup_evm(primary: bool) -> (MockEVM, B256) {
+fn create_ext_compile_worker(
+    spin_lock: bool,
+    primary: bool,
+    timeout: Duration,
+) -> EXTCompileWorker {
     let start_time = Instant::now();
-    let timeout = Duration::from_secs(1800);
-    let mut external: Option<EXTCompileWorker> = None;
-    while external.is_none() {
+    loop {
         match EXTCompileWorker::new(primary, 1, 3, 128) {
             Ok(worker) => {
-                external = Some(worker);
+                return worker;
             }
             Err(_) => {
-                if start_time.elapsed() >= timeout {
-                    panic!("Failed to create EXTCompileWorker within 10 minutes.");
+                if !spin_lock {
+                    panic!("Failed to create EXTCompileWorker");
+                } else if start_time.elapsed() >= timeout {
+                    panic!("Failed to create EXTCompileWorker within spinlock, make timeout error");
                 }
                 thread::sleep(Duration::from_secs(10));
             }
         }
     }
-    let ext_worker = Arc::new(external.unwrap());
+}
+
+#[inline]
+fn setup_evm(db_spin_lock: bool, primary: bool) -> (MockEVM, B256) {
+    let timeout = Duration::from_secs(1800);
+    let external = create_ext_compile_worker(db_spin_lock, primary, timeout);
+
+    let ext_worker = Arc::new(external);
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()
         .with_db(db)
@@ -59,8 +69,8 @@ fn setup_evm(primary: bool) -> (MockEVM, B256) {
     (evm, fib_hash)
 }
 
-fn primary_worker_fn() {
-    let (mut evm, fib_hash) = setup_evm(true);
+fn primary_worker_fn(spin_lock: bool) {
+    let (mut evm, fib_hash) = setup_evm(spin_lock, true);
     let code_path = store_path().join(fib_hash.to_string());
     assert!(!code_path.exists(), "Ensure aot-compiled code doesn't exist");
 
@@ -105,7 +115,7 @@ fn primary_worker_fn() {
 
 #[allow(dead_code)]
 fn secondary_worker_fn() {
-    let (mut evm, fib_hash) = setup_evm(false);
+    let (mut evm, fib_hash) = setup_evm(false, false);
     evm.context.evm.env.tx.transact_to = TransactTo::Call(DEPLOYED_ADDRESS);
     evm.context.evm.env.tx.data = U256::from(9).to_be_bytes_vec().into();
     let mut result = evm.transact().unwrap();
@@ -124,7 +134,7 @@ fn secondary_worker_fn() {
 }
 
 #[test]
-fn test_suite() {
+fn test_worker_suite() {
     test_worker_single_process();
 
     test_worker_multi_process();
@@ -132,7 +142,7 @@ fn test_suite() {
 
 fn test_worker_single_process() {
     let _g = TestEnvGuard::new();
-    primary_worker_fn();
+    primary_worker_fn(true);
 }
 
 fn test_worker_multi_process() {
@@ -140,6 +150,7 @@ fn test_worker_multi_process() {
     let mut processes = Vec::new();
     let primary_process = std::process::Command::new(std::env::current_exe().unwrap())
         .arg("primary_worker_fn")
+        .arg("true")
         .spawn()
         .expect("Failed to spawn child process");
     processes.push(primary_process);
