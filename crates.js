@@ -1,0 +1,2 @@
+window.ALL_CRATES = ["revmc","revmc_backend","revmc_build","revmc_builtins","revmc_cli_tests","revmc_context","revmc_cranelift","revmc_examples_compiler","revmc_examples_runner","revmc_examples_worker","revmc_llvm","revmc_worker"];
+//{"start":21,"fragment_lengths":[7,16,14,17,18,16,18,26,24,24,13,15]}

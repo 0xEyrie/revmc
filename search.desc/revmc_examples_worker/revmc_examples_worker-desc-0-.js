@@ -1,0 +1,1 @@
+searchState.loadedDescShard("revmc_examples_worker", 0, "Simple compiler worker example.\nFirst call executes the transaction and compiles into …")

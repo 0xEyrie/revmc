@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["db_path","default_path","module_name","sc_db_path","store_path"]};
