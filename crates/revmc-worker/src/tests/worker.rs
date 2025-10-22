@@ -26,7 +26,7 @@ fn create_ext_compile_worker(
 ) -> EXTCompileWorker {
     let start_time = Instant::now();
     loop {
-        match EXTCompileWorker::new(primary, 1, 3, 128) {
+        match EXTCompileWorker::new(1, 3, 128) {
             Ok(worker) => {
                 return worker;
             }

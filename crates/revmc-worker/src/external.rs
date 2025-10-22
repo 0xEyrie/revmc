@@ -7,7 +7,7 @@ use std::{
 use crate::{
     error::Error,
     module_name,
-    worker::{store_path, AotCompileWorkerPool, HotCodeCounter},
+    worker::{store_path, AotCompileWorkerPool, HotCodeDetector},
 };
 use libloading::{Library, Symbol};
 use lru::LruCache;
@@ -43,13 +43,14 @@ pub struct EXTCompileWorker {
 
 impl EXTCompileWorker {
     pub fn new(
-        primary: bool,
         threshold: u64,
         worker_pool_size: usize,
         cache_size_words: usize,
     ) -> Result<Self, Error> {
-        let hot_code_counter = HotCodeCounter::new(primary, worker_pool_size)?;
-        let worker_pool = AotCompileWorkerPool::new(threshold, hot_code_counter, worker_pool_size);
+        let store = store_path();
+        let gas_stats_path = store.join("gas_stats");
+        let hot_code_detector = HotCodeDetector::new(gas_stats_path, worker_pool_size)?;
+        let worker_pool = AotCompileWorkerPool::new(store, threshold, hot_code_detector, worker_pool_size);
 
         Ok(Self {
             worker_pool,
@@ -106,8 +107,8 @@ impl EXTCompileWorker {
     }
 
     /// Spwan AOT compile the byecode referred by code_hash
-    pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes) -> Result<(), Error> {
-        self.worker_pool.spwan(spec_id, code_hash, bytecode)?;
+    pub fn spwan(&self, spec_id: SpecId, code_hash: B256, bytecode: Bytes, gas_used: u64) -> Result<(), Error> {
+        self.worker_pool.spwan(spec_id, code_hash, bytecode, gas_used)?;
         Ok(())
     }
 }

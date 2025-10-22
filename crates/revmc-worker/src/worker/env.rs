@@ -28,7 +28,7 @@ pub(crate) fn module_name() -> String {
 }
 
 /// Returns the path to the store that save compiled result.
-pub(crate) fn store_path() -> PathBuf {
+pub fn store_path() -> PathBuf {
     default_path().join("output")
 }
 
