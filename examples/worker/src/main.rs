@@ -11,6 +11,9 @@ pub const FIBONACCI_CODE: &[u8] =
     &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
 
 /// Performance comparison example:
+///
+/// IMPORTANT: EXTCompiler should be initialized ONCE and reused across multiple EVMs
+///
 /// 1. Interpretation (first call, cold)
 /// 2. AOT compilation (background)
 /// 3. Load from disk (second call after compilation)
@@ -24,16 +27,42 @@ fn main() {
         println!("Removed: {}\n", output_path.display());
     }
 
-    println!("=== Initializing EXTCompiler ===");
+    // IMPORTANT: Initialize EXTCompiler ONCE (expensive: ~8ms due to RocksDB)
+    // This should be done at application startup, NOT per-EVM
+    println!("=== Initializing EXTCompiler (ONE TIME) ===");
     let init_start = std::time::Instant::now();
     let ext_worker = Arc::new(EXTCompileWorker::new(1, 3, 128).unwrap());
-    println!("Initialization took: {:?}\n", init_start.elapsed());
+    let compiler_init_time = init_start.elapsed();
+    println!("EXTCompiler initialization: {:?}", compiler_init_time);
+    println!("  - RocksDB open: ~7-8ms");
+    println!("  - Worker pool: minimal");
+    println!("  - LRU cache: minimal");
+    println!("  => Reuse this across multiple EVMs!\n");
+
+    // Create EVM (cheap: ~600µs)
+    // You can create multiple EVMs with the same ext_worker
+    println!("=== Creating EVM (reusing EXTCompiler) ===");
+    let evm_start = std::time::Instant::now();
     let db = CacheDB::new(EmptyDB::new());
     let mut evm = revm::Evm::builder()
         .with_db(db)
         .with_external_context(ext_worker.clone())
         .append_handler_register(register_handler)
         .build();
+    let evm_init_time = evm_start.elapsed();
+    println!("EVM #1 creation: {:?}", evm_init_time);
+
+    // Demonstrate creating another EVM (should be fast)
+    let evm2_start = std::time::Instant::now();
+    let db2 = CacheDB::new(EmptyDB::new());
+    let _evm2 = revm::Evm::builder()
+        .with_db(db2)
+        .with_external_context(ext_worker.clone())
+        .append_handler_register(register_handler)
+        .build();
+    let evm2_init_time = evm2_start.elapsed();
+    println!("EVM #2 creation: {:?} (reuses compiled contracts!)", evm2_init_time);
+    println!("Total one-time initialization: {:?}\n", compiler_init_time + evm_init_time);
 
     let fibonacci_address = address!("0000000000000000000000000000000000001234");
 
