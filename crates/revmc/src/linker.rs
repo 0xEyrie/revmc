@@ -63,7 +63,8 @@ impl Linker {
         cmd.arg("-O3");
         if let Some(linker) = &self.linker {
             cmd.arg(format!("-fuse-ld={}", linker.display()));
-        } else {
+        } else if !cfg!(target_vendor = "apple") {
+            // Use lld on Linux/Windows, but use default linker on macOS
             cmd.arg("-fuse-ld=lld");
         }
         if cfg!(target_vendor = "apple") {
