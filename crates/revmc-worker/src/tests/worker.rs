@@ -1,28 +1,25 @@
-use revm::{
-    db::{CacheDB, EmptyDB, EmptyDBTyped},
-    Evm,
-};
-use revm_primitives::{address, hex, AccountInfo, Address, Bytecode, TransactTo, B256, U256};
-use std::{
-    convert::Infallible,
-    sync::Arc,
-    thread,
-    time::{Duration, Instant},
-};
+use revm::{ db::{ CacheDB, EmptyDB, EmptyDBTyped }, Evm };
+use revm_primitives::{ address, hex, AccountInfo, Address, Bytecode, TransactTo, B256, U256 };
+use std::{ convert::Infallible, sync::Arc, thread, time::{ Duration, Instant } };
 
 use crate::{
-    register_handler, store_path, tests::utils::TestEnvGuard, EXTCompileWorker, FetchedFnResult,
+    register_compiler,
+    store_path,
+    tests::utils::TestEnvGuard,
+    EXTCompileWorker,
+    FetchedFnResult,
 };
 
-const FIBONACCI_CODE: &[u8] =
-    &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
+const FIBONACCI_CODE: &[u8] = &hex!(
+    "5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3"
+);
 const DEPLOYED_ADDRESS: Address = address!("0000000000000000000000000000000000001234");
 type MockEVM = Evm<'static, Arc<EXTCompileWorker>, CacheDB<EmptyDBTyped<Infallible>>>;
 
 fn create_ext_compile_worker(
     spin_lock: bool,
     primary: bool,
-    timeout: Duration,
+    timeout: Duration
 ) -> EXTCompileWorker {
     let start_time = Instant::now();
     loop {
@@ -49,22 +46,20 @@ fn setup_evm(db_spin_lock: bool, primary: bool) -> (MockEVM, B256) {
 
     let ext_worker = Arc::new(external);
     let db = CacheDB::new(EmptyDB::new());
-    let mut evm = revm::Evm::builder()
+    let mut evm = revm::Evm
+        ::builder()
         .with_db(db)
         .with_external_context(ext_worker)
-        .append_handler_register(register_handler)
+        .append_handler_register(register_compiler)
         .build();
     let fib_bytecode = Bytecode::new_raw(FIBONACCI_CODE.into());
     let fib_hash = fib_bytecode.hash_slow();
 
-    evm.db_mut().insert_account_info(
-        DEPLOYED_ADDRESS,
-        AccountInfo {
-            code_hash: fib_hash,
-            code: Some(Bytecode::new_raw(FIBONACCI_CODE.into())),
-            ..Default::default()
-        },
-    );
+    evm.db_mut().insert_account_info(DEPLOYED_ADDRESS, AccountInfo {
+        code_hash: fib_hash,
+        code: Some(Bytecode::new_raw(FIBONACCI_CODE.into())),
+        ..Default::default()
+    });
 
     (evm, fib_hash)
 }
@@ -148,14 +143,16 @@ fn test_worker_single_process() {
 fn test_worker_multi_process() {
     let _g = TestEnvGuard::new();
     let mut processes = Vec::new();
-    let primary_process = std::process::Command::new(std::env::current_exe().unwrap())
+    let primary_process = std::process::Command
+        ::new(std::env::current_exe().unwrap())
         .arg("primary_worker_fn")
         .arg("true")
         .spawn()
         .expect("Failed to spawn child process");
     processes.push(primary_process);
     for _ in 0..10 {
-        let secondary_process = std::process::Command::new(std::env::current_exe().unwrap())
+        let secondary_process = std::process::Command
+            ::new(std::env::current_exe().unwrap())
             .arg("secondary_worker_fn")
             .spawn()
             .expect("Failed to spawn child process");

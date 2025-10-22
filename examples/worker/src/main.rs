@@ -1,14 +1,15 @@
 //! Simple compiler worker example.
 
 use revm::{
-    db::{CacheDB, EmptyDB},
-    primitives::{address, hex, AccountInfo, Bytecode, TransactTo, U256},
+    db::{ CacheDB, EmptyDB },
+    primitives::{ address, hex, AccountInfo, Bytecode, TransactTo, U256 },
 };
-use revmc_worker::{register_handler, store_path, EXTCompileWorker};
-use std::{fs, sync::Arc, thread};
+use revmc_worker::{ register_compiler, store_path, EXTCompileWorker };
+use std::{ fs, sync::Arc, thread };
 
-pub const FIBONACCI_CODE: &[u8] =
-    &hex!("5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3");
+pub const FIBONACCI_CODE: &[u8] = &hex!(
+    "5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3"
+);
 
 /// Performance comparison example:
 ///
@@ -44,10 +45,11 @@ fn main() {
     println!("=== Creating EVM (reusing EXTCompiler) ===");
     let evm_start = std::time::Instant::now();
     let db = CacheDB::new(EmptyDB::new());
-    let mut evm = revm::Evm::builder()
+    let mut evm = revm::Evm
+        ::builder()
         .with_db(db)
         .with_external_context(ext_worker.clone())
-        .append_handler_register(register_handler)
+        .append_handler_register(register_compiler)
         .build();
     let evm_init_time = evm_start.elapsed();
     println!("EVM #1 creation: {:?}", evm_init_time);
@@ -55,10 +57,11 @@ fn main() {
     // Demonstrate creating another EVM (should be fast)
     let evm2_start = std::time::Instant::now();
     let db2 = CacheDB::new(EmptyDB::new());
-    let _evm2 = revm::Evm::builder()
+    let _evm2 = revm::Evm
+        ::builder()
         .with_db(db2)
         .with_external_context(ext_worker.clone())
-        .append_handler_register(register_handler)
+        .append_handler_register(register_compiler)
         .build();
     let evm2_init_time = evm2_start.elapsed();
     println!("EVM #2 creation: {:?} (reuses compiled contracts!)", evm2_init_time);
@@ -69,14 +72,11 @@ fn main() {
     let fib_bytecode = Bytecode::new_raw(FIBONACCI_CODE.into());
     let fib_hash = fib_bytecode.hash_slow();
 
-    evm.db_mut().insert_account_info(
-        fibonacci_address,
-        AccountInfo {
-            code_hash: fib_hash,
-            code: Some(Bytecode::new_raw(FIBONACCI_CODE.into())),
-            ..Default::default()
-        },
-    );
+    evm.db_mut().insert_account_info(fibonacci_address, AccountInfo {
+        code_hash: fib_hash,
+        code: Some(Bytecode::new_raw(FIBONACCI_CODE.into())),
+        ..Default::default()
+    });
 
     // Test Case 1: Interpretation (cold start)
     println!("=== Case 1: Interpretation (first execution) ===");
@@ -141,7 +141,7 @@ fn main() {
         evm.transact().unwrap();
         times.push(start.elapsed());
     }
-    let avg = times.iter().sum::<std::time::Duration>() / times.len() as u32;
+    let avg = times.iter().sum::<std::time::Duration>() / (times.len() as u32);
     let min = times.iter().min().unwrap();
     let max = times.iter().max().unwrap();
     println!("Average: {:?}", avg);

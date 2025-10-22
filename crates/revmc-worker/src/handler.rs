@@ -1,15 +1,12 @@
-use std::{
-    panic::{catch_unwind, AssertUnwindSafe},
-    sync::Arc,
-};
+use std::{ panic::{ catch_unwind, AssertUnwindSafe }, sync::Arc };
 
-use revm::{handler::register::EvmHandler, Database};
+use revm::{ handler::register::EvmHandler, Database };
 
-use crate::{EXTCompileWorker, FetchedFnResult};
+use crate::{ EXTCompileWorker, FetchedFnResult };
 
 // Register handler for external context to support background compile worker in node runtime
-pub fn register_handler<DB: Database + 'static>(
-    handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>,
+pub fn register_compiler<DB: Database + 'static>(
+    handler: &mut EvmHandler<'_, Arc<EXTCompileWorker>, DB>
 ) {
     let prev = handler.execution.execute_frame.clone();
     handler.execution.execute_frame = Arc::new(move |frame, memory, tables, context| {
@@ -33,7 +30,12 @@ pub fn register_handler<DB: Database + 'static>(
                 let spec_id = context.evm.inner.spec_id();
                 let bytecode = context.evm.db.code_by_hash(code_hash).unwrap_or_default();
 
-                let _res = context.external.spwan(spec_id, code_hash, bytecode.original_bytes(), gas_used);
+                let _res = context.external.spwan(
+                    spec_id,
+                    code_hash,
+                    bytecode.original_bytes(),
+                    gas_used
+                );
                 #[cfg(feature = "tracing")]
                 if let Err(err) = _res {
                     tracing::error!("Failed to queue compilation for {:#x}: {:#?}", code_hash, err);
@@ -43,9 +45,11 @@ pub fn register_handler<DB: Database + 'static>(
             }
 
             Ok(FetchedFnResult::Found(f)) => {
-                let res = catch_unwind(AssertUnwindSafe(|| unsafe {
-                    f.call_with_interpreter_and_memory(interpreter, memory, context)
-                }));
+                let res = catch_unwind(
+                    AssertUnwindSafe(|| unsafe {
+                        f.call_with_interpreter_and_memory(interpreter, memory, context)
+                    })
+                );
 
                 #[cfg(feature = "tracing")]
                 if let Err(err) = &res {
